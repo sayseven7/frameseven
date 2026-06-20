@@ -580,6 +580,8 @@ jobs:
             --file docker-build/v1/Dockerfile \
             --platform linux/amd64 \
             --push \
+            --provenance=false \
+            --sbom=false \
             --label org.opencontainers.image.title=frameseven \
             --label "org.opencontainers.image.description=frameseven CLI v1 and MCP server with runtime dependencies" \
             --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
