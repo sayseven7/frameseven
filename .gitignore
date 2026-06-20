@@ -60,5 +60,7 @@ tsconfig.tsbuildinfo
 .codex
 
 # claude
-.claude/settings.json
-.claude/settings.local.json
+.claude
+
+# agents
+.agents
