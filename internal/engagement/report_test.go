@@ -6,6 +6,7 @@ import (
 
 	"github.com/sayseven7/frameseven/internal/finding"
 	"github.com/sayseven7/frameseven/internal/report"
+	"github.com/sayseven7/frameseven/internal/tools/v1/recon"
 )
 
 func TestBuildReportIncludesExtractedDataAndExcludesFalsePositives(t *testing.T) {
@@ -127,5 +128,44 @@ func TestBuildReportRendersToAllFormats(t *testing.T) {
 
 	if !strings.Contains(html, "confidential-banner") {
 		t.Errorf("html missing confidentiality banner")
+	}
+}
+
+func TestBuildReportUsesPersistedSurface(t *testing.T) {
+	dir := t.TempDir()
+
+	eng, err := Open(dir, "https://example.com")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	surface := recon.Surface{
+		Host:           "example.com",
+		Technologies:   []recon.Technology{{Name: "nginx", Source: "header"}},
+		Endpoints:      []string{"/login"},
+		Params:         []recon.Param{{Name: "id", Endpoint: "/item", Method: "GET"}},
+		SensitiveFiles: []string{"/.git/config"},
+	}
+
+	if err := eng.SetSurface(surface); err != nil {
+		t.Fatalf("SetSurface: %v", err)
+	}
+
+	rep := eng.BuildReport()
+
+	if len(rep.Surface.Technologies) == 0 {
+		t.Errorf("report surface technologies are empty")
+	}
+
+	if len(rep.Surface.Endpoints) == 0 {
+		t.Errorf("report surface endpoints are empty")
+	}
+
+	if len(rep.Surface.Params) == 0 {
+		t.Errorf("report surface params are empty")
+	}
+
+	if len(rep.Surface.SensitiveFiles) == 0 {
+		t.Errorf("report surface sensitive files are empty")
 	}
 }

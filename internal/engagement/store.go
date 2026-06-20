@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sayseven7/frameseven/internal/finding"
+	"github.com/sayseven7/frameseven/internal/tools/v1/recon"
 )
 
 const (
@@ -221,6 +222,60 @@ func (e *Engagement) Update(id string, patch Patch) error {
 	item.UpdatedAt = time.Now().UTC()
 
 	return e.save()
+}
+
+// SetSurface persists the attack surface mapped during a scan into the
+// engagement meta, so reports built from this store reflect the same scope
+// information the scanner observed.
+//
+// Surfaces are merged per field rather than replaced wholesale: the most recent
+// scan wins for every field it actually mapped, but a field the new scan left
+// empty keeps whatever a previous scan found. This matters because a single
+// engagement is built from several scan calls and only the offensive tools pull
+// in recon; a later misconfig/ports/nmap scan reports an empty surface and must
+// not wipe the technologies, endpoints, parameters, and sensitive files an
+// earlier recon scan already discovered.
+func (e *Engagement) SetSurface(surface recon.Surface) error {
+	e.Meta.Surface = mergeSurface(e.Meta.Surface, surface)
+	return e.save()
+}
+
+// mergeSurface overlays the next surface onto the current one, keeping the
+// current value for any field the next surface left empty.
+func mergeSurface(current, next recon.Surface) recon.Surface {
+	if next.BaseURL != "" {
+		current.BaseURL = next.BaseURL
+	}
+
+	if next.Host != "" {
+		current.Host = next.Host
+	}
+
+	if len(next.Headers) > 0 {
+		current.Headers = next.Headers
+	}
+
+	if len(next.Technologies) > 0 {
+		current.Technologies = next.Technologies
+	}
+
+	if len(next.DNS.A) > 0 || next.DNS.CNAME != "" || len(next.DNS.MX) > 0 || len(next.DNS.NS) > 0 || len(next.DNS.TXT) > 0 {
+		current.DNS = next.DNS
+	}
+
+	if len(next.Endpoints) > 0 {
+		current.Endpoints = next.Endpoints
+	}
+
+	if len(next.Params) > 0 {
+		current.Params = next.Params
+	}
+
+	if len(next.SensitiveFiles) > 0 {
+		current.SensitiveFiles = next.SensitiveFiles
+	}
+
+	return current
 }
 
 // Find returns the finding with the given id, or false when it does not exist.

@@ -305,6 +305,10 @@ func appendToEngagement(engagementID, target string, rep report.Report) string {
 		}
 	}
 
+	if err := eng.SetSurface(rep.Surface); err != nil {
+		return eng.Meta.ID
+	}
+
 	byTool := map[string][]finding.Finding{}
 	for _, item := range rep.Findings {
 		byTool[item.Module] = append(byTool[item.Module], item)

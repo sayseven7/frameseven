@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/sayseven7/frameseven/internal/finding"
+	"github.com/sayseven7/frameseven/internal/tools/v1/recon"
 )
 
 func TestOpenReusesStoreForSameTarget(t *testing.T) {
@@ -147,5 +148,108 @@ func TestAddManualLinksRemediationSkill(t *testing.T) {
 	stored, _ := eng.Find(id)
 	if stored.RelatedSkill != skillURIPrefix+"sqli-sql-injection/SKILL.md" {
 		t.Fatalf("related skill = %q", stored.RelatedSkill)
+	}
+}
+
+func TestSetSurfacePersistsAcrossReload(t *testing.T) {
+	dir := t.TempDir()
+
+	eng, err := Open(dir, "https://example.com")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	surface := recon.Surface{
+		Host:           "example.com",
+		Technologies:   []recon.Technology{{Name: "nginx", Version: "1.25", Source: "header"}},
+		Endpoints:      []string{"/login"},
+		Params:         []recon.Param{{Name: "id", Endpoint: "/item", Method: "GET"}},
+		SensitiveFiles: []string{"/.git/config"},
+	}
+
+	if err := eng.SetSurface(surface); err != nil {
+		t.Fatalf("SetSurface: %v", err)
+	}
+
+	reloaded, err := LoadByID(dir, eng.Meta.ID)
+	if err != nil {
+		t.Fatalf("LoadByID: %v", err)
+	}
+
+	got := reloaded.Meta.Surface
+
+	if got.Host != "example.com" {
+		t.Fatalf("host = %q", got.Host)
+	}
+
+	if len(got.Technologies) != 1 || got.Technologies[0].Name != "nginx" {
+		t.Fatalf("technologies = %+v", got.Technologies)
+	}
+
+	if len(got.Endpoints) != 1 || got.Endpoints[0] != "/login" {
+		t.Fatalf("endpoints = %+v", got.Endpoints)
+	}
+
+	if len(got.Params) != 1 || got.Params[0].Name != "id" {
+		t.Fatalf("params = %+v", got.Params)
+	}
+
+	if len(got.SensitiveFiles) != 1 || got.SensitiveFiles[0] != "/.git/config" {
+		t.Fatalf("sensitive files = %+v", got.SensitiveFiles)
+	}
+}
+
+func TestSetSurfaceReplacesPreviousSurface(t *testing.T) {
+	dir := t.TempDir()
+
+	eng, err := Open(dir, "https://example.com")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	if err := eng.SetSurface(recon.Surface{Host: "example.com", Endpoints: []string{"/old"}}); err != nil {
+		t.Fatalf("first SetSurface: %v", err)
+	}
+
+	if err := eng.SetSurface(recon.Surface{Host: "example.com", Endpoints: []string{"/new"}}); err != nil {
+		t.Fatalf("second SetSurface: %v", err)
+	}
+
+	if len(eng.Meta.Surface.Endpoints) != 1 || eng.Meta.Surface.Endpoints[0] != "/new" {
+		t.Fatalf("expected latest surface to replace previous, got %+v", eng.Meta.Surface.Endpoints)
+	}
+}
+
+func TestSetSurfaceDoesNotWipeWithEmptyScan(t *testing.T) {
+	dir := t.TempDir()
+
+	eng, err := Open(dir, "https://example.com")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	// First scan ran recon and mapped the surface.
+	mapped := recon.Surface{
+		Host:           "example.com",
+		Technologies:   []recon.Technology{{Name: "nginx", Source: "header"}},
+		Endpoints:      []string{"/login"},
+		Params:         []recon.Param{{Name: "id", Endpoint: "/item", Method: "GET"}},
+		SensitiveFiles: []string{"/.git/config"},
+	}
+
+	if err := eng.SetSurface(mapped); err != nil {
+		t.Fatalf("first SetSurface: %v", err)
+	}
+
+	// A later scan (e.g. misconfig) does not pull in recon and reports an
+	// empty surface; it must not wipe the previously mapped data.
+	if err := eng.SetSurface(recon.Surface{Host: "example.com"}); err != nil {
+		t.Fatalf("second SetSurface: %v", err)
+	}
+
+	got := eng.Meta.Surface
+
+	if len(got.Technologies) != 1 || len(got.Endpoints) != 1 || len(got.Params) != 1 || len(got.SensitiveFiles) != 1 {
+		t.Fatalf("empty scan wiped surface: %+v", got)
 	}
 }

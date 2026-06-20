@@ -6,7 +6,6 @@ import (
 
 	"github.com/sayseven7/frameseven/internal/finding"
 	"github.com/sayseven7/frameseven/internal/report"
-	"github.com/sayseven7/frameseven/internal/tools/v1/recon"
 )
 
 // BuildReport assembles a consolidated, triaged report from the engagement
@@ -43,7 +42,12 @@ func (e *Engagement) BuildReport() report.Report {
 		}
 	}
 
-	rep := report.New("v1", e.Meta.Target, e.Meta.CreatedAt, time.Since(e.Meta.CreatedAt), recon.Surface{Host: e.Meta.Host}, findings, nil)
+	surface := e.Meta.Surface
+	if surface.Host == "" {
+		surface.Host = e.Meta.Host
+	}
+
+	rep := report.New("v1", e.Meta.Target, e.Meta.CreatedAt, time.Since(e.Meta.CreatedAt), surface, findings, nil)
 
 	rep.EngagementID = e.Meta.ID
 	rep.ExtractedData = extracted

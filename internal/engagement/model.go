@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sayseven7/frameseven/internal/finding"
+	"github.com/sayseven7/frameseven/internal/tools/v1/recon"
 )
 
 // Source records whether a finding came from an automated scanner tool or from
@@ -35,11 +36,12 @@ const (
 
 // Meta is the engagement header persisted in meta.json.
 type Meta struct {
-	ID        string    `json:"id"`
-	Target    string    `json:"target"`
-	Host      string    `json:"host"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        string        `json:"id"`
+	Target    string        `json:"target"`
+	Host      string        `json:"host"`
+	CreatedAt time.Time     `json:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at"`
+	Surface   recon.Surface `json:"surface,omitempty"`
 }
 
 // Finding is a single issue tracked in the engagement store. It is richer than
