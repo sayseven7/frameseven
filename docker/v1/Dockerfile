@@ -1,8 +1,5 @@
 FROM debian:bookworm-slim
 
-ARG TARGETOS
-ARG TARGETARCH
-
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -25,8 +22,8 @@ RUN useradd --create-home --uid 1000 --shell /bin/sh frameseven && \
     mkdir -p /workspace && \
     chown -R frameseven:frameseven /workspace /home/frameseven
 
-COPY --chmod=0755 bin/${TARGETOS}/${TARGETARCH}/frameseven /usr/local/bin/frameseven
-COPY --chmod=0755 bin/${TARGETOS}/${TARGETARCH}/frameseven-mcp /usr/local/bin/frameseven-mcp
+COPY --chmod=0755 bin/frameseven /usr/local/bin/frameseven
+COPY --chmod=0755 bin/frameseven-mcp /usr/local/bin/frameseven-mcp
 
 ENV FRAMESEVEN_PYTHON=/opt/frameseven-python/bin/python
 

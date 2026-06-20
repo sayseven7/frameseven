@@ -525,26 +525,19 @@ jobs:
         shell: bash
         run: |
           version="${RELEASE_TAG#v}"
+          mkdir -p docker-build/v1/bin
 
-          for goarch in amd64 arm64; do
-            output_dir="docker-build/v1/bin/linux/$goarch"
-            mkdir -p "$output_dir"
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
+            -trimpath \
+            -ldflags="-s -w -X main.buildVersion=$version" \
+            -o docker-build/v1/bin/frameseven \
+            ./cmd/cli/v1
 
-            GOOS=linux GOARCH="$goarch" CGO_ENABLED=0 go build \
-              -trimpath \
-              -ldflags="-s -w -X main.buildVersion=$version" \
-              -o "$output_dir/frameseven" \
-              ./cmd/cli/v1
-
-            GOOS=linux GOARCH="$goarch" CGO_ENABLED=0 go build \
-              -trimpath \
-              -ldflags="-s -w" \
-              -o "$output_dir/frameseven-mcp" \
-              ./cmd/mcp
-          done
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o docker-build/v1/bin/frameseven-mcp \
+            ./cmd/mcp
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -561,7 +554,7 @@ jobs:
         with:
           context: docker-build/v1
           file: docker/v1/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.docker-tags.outputs.tags }}
           labels: |
@@ -583,6 +576,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:
+          pattern: frameseven-*
           path: dist
           merge-multiple: true
 

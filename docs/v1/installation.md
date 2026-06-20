@@ -16,7 +16,7 @@ Each release provides:
 - Debian packages for `amd64` and `arm64`
 - RPM packages for `amd64` and `arm64`
 - Arch Linux packages for `amd64` and `arm64`
-- Docker image v1 for `linux/amd64` and `linux/arm64`
+- Docker image v1 for `linux/amd64`
 - A `SHA256SUMS` file for artifact verification
 
 Release tags use the `vX.Y.Z` format. Artifact and package versions omit the
