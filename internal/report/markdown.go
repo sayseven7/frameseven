@@ -10,7 +10,18 @@ import (
 func WriteMarkdown(w io.Writer, rep Report) error {
 	fmt.Fprintln(w, "# frameseven Scan Report")
 	fmt.Fprintln(w)
+
+	if rep.Confidential {
+		fmt.Fprintln(w, "> **CONFIDENTIAL** — this report contains extracted sensitive data. Handle and store securely.")
+		fmt.Fprintln(w)
+	}
+
 	fmt.Fprintf(w, "- **Target:** `%s`\n", rep.Target)
+
+	if rep.EngagementID != "" {
+		fmt.Fprintf(w, "- **Engagement:** `%s`\n", rep.EngagementID)
+	}
+
 	fmt.Fprintf(w, "- **Started:** `%s`\n", rep.StartedAt.Format("2006-01-02 15:04:05 MST"))
 	fmt.Fprintf(w, "- **Duration:** `%s`\n", rep.Duration)
 	fmt.Fprintf(w, "- **Status:** `%s`\n", reportStatus(rep))
@@ -43,11 +54,16 @@ func WriteMarkdown(w io.Writer, rep Report) error {
 		fmt.Fprintln(w)
 	}
 
+	writeMarkdownExtractedData(w, rep.ExtractedData)
+
 	fmt.Fprintln(w, "## Findings")
 	fmt.Fprintln(w)
 
 	if len(rep.Findings) == 0 {
 		fmt.Fprintln(w, "No findings.")
+		fmt.Fprintln(w)
+
+		writeMarkdownFalsePositives(w, rep.FalsePositives)
 
 		return nil
 	}
@@ -88,7 +104,67 @@ func WriteMarkdown(w io.Writer, rep Report) error {
 		}
 	}
 
+	writeMarkdownFalsePositives(w, rep.FalsePositives)
+
 	return nil
+}
+
+func writeMarkdownExtractedData(w io.Writer, items []ExtractedItem) {
+	if len(items) == 0 {
+		return
+	}
+
+	fmt.Fprintln(w, "## Sensitive Data Extracted")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Data recovered during exploitation. Treat every value below as a confirmed exposure.")
+	fmt.Fprintln(w)
+
+	for _, item := range items {
+		fmt.Fprintf(w, "### %s\n\n", item.Title)
+
+		if item.Severity != "" {
+			fmt.Fprintf(w, "- **Severity:** `%s`\n", item.Severity)
+		}
+
+		if item.Endpoint != "" {
+			fmt.Fprintf(w, "- **Endpoint:** `%s`\n", item.Endpoint)
+		}
+
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "```text")
+		fmt.Fprintln(w, item.Data)
+		fmt.Fprintln(w, "```")
+		fmt.Fprintln(w)
+	}
+}
+
+func writeMarkdownFalsePositives(w io.Writer, items []FalsePositiveItem) {
+	if len(items) == 0 {
+		return
+	}
+
+	fmt.Fprintln(w, "## Appendix: Discarded False Positives")
+	fmt.Fprintln(w)
+
+	for _, item := range items {
+		fmt.Fprintf(w, "- **%s**", item.Title)
+
+		if item.Module != "" {
+			fmt.Fprintf(w, " `%s`", item.Module)
+		}
+
+		if item.Endpoint != "" {
+			fmt.Fprintf(w, " — `%s`", item.Endpoint)
+		}
+
+		if item.Reason != "" {
+			fmt.Fprintf(w, " — %s", item.Reason)
+		}
+
+		fmt.Fprintln(w)
+	}
+
+	fmt.Fprintln(w)
 }
 
 func writeMarkdownEvidence(w io.Writer, title, value string) {

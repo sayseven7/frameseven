@@ -139,7 +139,9 @@ class SecurityReportPDF(FPDF):
         self.executive_overview()
         self.assessment_scope()
         self.attack_surface()
+        self.extracted_data_section()
         self.security_findings()
+        self.false_positives_section()
 
     # ------------------------------------------------------------------
     # Primitives and helpers
@@ -570,6 +572,81 @@ class SecurityReportPDF(FPDF):
             self.multi_cell(0, 4, clean(endpoint), new_x="LMARGIN", new_y="NEXT")
 
         self.ln(1.5)
+
+    def extracted_data_section(self):
+        items = list_value(self.report.get("extracted_data"))
+        if not items:
+            return
+
+        self.section_heading(
+            "Sensitive data extracted",
+            "Dumps, credentials, and files recovered during exploitation. Treat every value as a confirmed exposure.",
+        )
+
+        for item in items:
+            title = item.get("title", "")
+            severity = item.get("severity", "")
+            endpoint = item.get("endpoint", "")
+
+            self.ensure_space(14)
+            self.set_x(self.l_margin)
+            self.badge_left = self.l_margin
+
+            if severity:
+                color = SEVERITY_COLORS.get(severity, MUTED)
+                self.badge(severity, color, BG, color)
+
+            if endpoint:
+                self.badge(endpoint, MUTED, SURFACE_SOFT, BORDER)
+
+            self.ln(6)
+
+            self.set_x(self.l_margin)
+            self.set_font("Helvetica", "B", 10)
+            self.set_text_color(*TEXT)
+            self.multi_cell(0, 5, clean(title), new_x="LMARGIN", new_y="NEXT")
+
+            self.code_block("Extracted data", item.get("data", ""), max_lines=120)
+
+    def false_positives_section(self):
+        items = list_value(self.report.get("false_positives"))
+        if not items:
+            return
+
+        self.section_heading(
+            "Appendix: discarded false positives",
+            "Candidates ruled out during triage and excluded from the findings above.",
+        )
+
+        for item in items:
+            self.ensure_space(10)
+
+            title = item.get("title", "")
+            module = item.get("module", "")
+            endpoint = item.get("endpoint", "")
+            reason = item.get("reason", "")
+
+            self.set_x(self.l_margin)
+            self.set_font("Helvetica", "B", 9)
+            self.set_text_color(*TEXT)
+
+            head = title
+            if module:
+                head = f"{head}  [{module}]"
+
+            self.multi_cell(0, 4.6, clean(head), new_x="LMARGIN", new_y="NEXT")
+
+            detail = endpoint
+            if reason:
+                detail = f"{detail} - {reason}" if detail else reason
+
+            if detail:
+                self.set_x(self.l_margin)
+                self.set_font("Helvetica", size=8)
+                self.set_text_color(*MUTED)
+                self.multi_cell(0, 4, clean(detail), new_x="LMARGIN", new_y="NEXT")
+
+            self.ln(1.5)
 
     def security_findings(self):
         findings = list_value(self.report.get("findings"))

@@ -23,6 +23,16 @@ Tools:
   recon, sqli, access, ssrf, lfi, misconfig, ratelimit, cve,
   crawler, content, subdomain, ports, nmap, sqlmap, bannergrab
 
+Engagement workflow (manual findings, triage, consolidated report):
+  - engagement_open opens a persistent store for a target.
+  - finding_add injects manual findings, including extracted_data (dumps,
+    cracked credentials, exfiltrated files) that the scanner cannot produce.
+  - finding_update attaches data or overrides severity on a stored finding.
+  - triage flags false positives (auto SPA index.html heuristic plus overrides).
+  - report_engagement renders the consolidated, triaged report from the store.
+  - recon, sqli, report, and the other scan tools accept an optional
+    engagement_id to append their findings to a store automatically.
+
 Tips:
   - normalize_tools validates a selection without running any probes.
   - extra_tools composes multiple scanners in a single call.

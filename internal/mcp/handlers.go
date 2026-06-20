@@ -58,12 +58,15 @@ type scanToolInput struct {
 	AuthCookies   []string          `json:"auth_cookies" jsonschema:"optional session cookies as name=value pairs; sent in the Cookie header of every request so the scan runs authenticated"`
 	AuthHeaders   map[string]string `json:"auth_headers" jsonschema:"optional auth headers such as Authorization; sent on every request so the scan runs authenticated"`
 	SeedEndpoints []string          `json:"seed_endpoints" jsonschema:"optional same-host API URLs known to the caller; merged into the scan surface so access and IDOR checks reach SPA/API routes a static crawl would miss"`
+
+	EngagementID string `json:"engagement_id" jsonschema:"optional engagement store id; when set, the findings are appended to that store for later triage and consolidated reporting"`
 }
 
 type scanToolOutput struct {
 	Version       string             `json:"version" jsonschema:"framework version"`
 	Target        string             `json:"target" jsonschema:"scanned target"`
 	RequestedTool string             `json:"requested_tool" jsonschema:"MCP tool requested by the caller"`
+	EngagementID  string             `json:"engagement_id,omitempty" jsonschema:"engagement store the findings were appended to, when one was used"`
 	SelectedTools []string           `json:"selected_tools" jsonschema:"normalized scanner tools that were executed"`
 	Duration      string             `json:"duration" jsonschema:"scan duration"`
 	Authenticated bool               `json:"authenticated" jsonschema:"whether the scan ran with caller-supplied session cookies or headers"`
@@ -106,11 +109,14 @@ type reportToolInput struct {
 	AuthCookies   []string          `json:"auth_cookies" jsonschema:"optional session cookies as name=value pairs; sent in the Cookie header of every request so the scan runs authenticated"`
 	AuthHeaders   map[string]string `json:"auth_headers" jsonschema:"optional auth headers such as Authorization; sent on every request so the scan runs authenticated"`
 	SeedEndpoints []string          `json:"seed_endpoints" jsonschema:"optional same-host API URLs known to the caller; merged into the scan surface so access and IDOR checks reach SPA/API routes a static crawl would miss"`
+
+	EngagementID string `json:"engagement_id" jsonschema:"optional engagement store id; when set, the findings are appended to that store for later triage and consolidated reporting"`
 }
 
 type reportToolOutput struct {
 	Version        string   `json:"version" jsonschema:"framework version"`
 	Target         string   `json:"target" jsonschema:"scanned target"`
+	EngagementID   string   `json:"engagement_id,omitempty" jsonschema:"engagement store the findings were appended to, when one was used"`
 	SelectedTools  []string `json:"selected_tools" jsonschema:"normalized scanner tools that were executed"`
 	Duration       string   `json:"duration" jsonschema:"scan duration"`
 	Authenticated  bool     `json:"authenticated" jsonschema:"whether the scan ran with caller-supplied session cookies or headers"`
@@ -180,15 +186,18 @@ func V1ScanTool(toolName string) func(context.Context, *mcpsdk.CallToolRequest, 
 
 		rep := scanner.Scan(&cfg)
 
-		return nil, buildScanToolOutput(toolName, selected, rep, authenticated), nil
+		engagementID := appendToEngagement(input.EngagementID, input.Target, rep)
+
+		return nil, buildScanToolOutput(toolName, selected, rep, authenticated, engagementID), nil
 	}
 }
 
-func buildScanToolOutput(toolName string, selected []string, rep report.Report, authenticated bool) scanToolOutput {
+func buildScanToolOutput(toolName string, selected []string, rep report.Report, authenticated bool, engagementID string) scanToolOutput {
 	return scanToolOutput{
 		Version:       rep.SchemaVersion,
 		Target:        rep.Target,
 		RequestedTool: toolName,
+		EngagementID:  engagementID,
 		SelectedTools: selected,
 		Duration:      rep.Duration,
 		Authenticated: authenticated,
@@ -230,6 +239,8 @@ func V1Report(ctx context.Context, req *mcpsdk.CallToolRequest, input reportTool
 	if err != nil {
 		return nil, reportToolOutput{}, err
 	}
+
+	out.EngagementID = appendToEngagement(input.EngagementID, input.Target, rep)
 
 	return nil, out, nil
 }

@@ -21,6 +21,33 @@ type Report struct {
 	Surface       recon.Surface     `json:"surface"`
 	Findings      []finding.Finding `json:"findings"`
 	Errors        []ScanErrorV1     `json:"errors,omitempty"`
+
+	// The fields below are populated only when the report is built from an
+	// engagement store. They stay empty (and render nothing) for plain scans,
+	// so the scanner report output is unchanged.
+
+	EngagementID   string              `json:"engagement_id,omitempty"`
+	Confidential   bool                `json:"confidential,omitempty"`
+	ExtractedData  []ExtractedItem     `json:"extracted_data,omitempty"`
+	FalsePositives []FalsePositiveItem `json:"false_positives,omitempty"`
+}
+
+// ExtractedItem is one piece of sensitive data pulled out during the
+// assessment: a database dump, cracked credentials, or an exfiltrated file.
+type ExtractedItem struct {
+	Title    string `json:"title"`
+	Endpoint string `json:"endpoint,omitempty"`
+	Severity string `json:"severity,omitempty"`
+	Data     string `json:"data"`
+}
+
+// FalsePositiveItem is a finding that triage discarded, kept for the report
+// appendix so the reader can see what was ruled out and why.
+type FalsePositiveItem struct {
+	Title    string `json:"title"`
+	Module   string `json:"module,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 // ScanErrorV1 records a tool that could not complete part of its scan.
@@ -86,8 +113,17 @@ func RenderHTML(rep Report) (string, error) {
 
 // WriteText renders a human-readable report grouped from most to least severe.
 func WriteText(w io.Writer, rep Report) {
+	if rep.Confidential {
+		fmt.Fprintf(w, "CONFIDENTIAL - this report contains extracted sensitive data. Handle and store securely.\n\n")
+	}
+
 	fmt.Fprintf(w, "frameseven scan report\n")
 	fmt.Fprintf(w, "target:   %s\n", rep.Target)
+
+	if rep.EngagementID != "" {
+		fmt.Fprintf(w, "engagement: %s\n", rep.EngagementID)
+	}
+
 	fmt.Fprintf(w, "started:  %s\n", rep.StartedAt.Format(time.RFC3339))
 	fmt.Fprintf(w, "duration: %s\n\n", rep.Duration)
 
@@ -104,17 +140,72 @@ func WriteText(w io.Writer, rep Report) {
 
 	writeSurface(w, rep.Surface)
 
+	writeExtractedDataText(w, rep.ExtractedData)
+
 	fmt.Fprintf(w, "findings: %d\n", len(rep.Findings))
 	fmt.Fprintf(w, "%s\n\n", countsBySeverity(rep.Findings))
 
 	if len(rep.Findings) == 0 {
 		fmt.Fprintf(w, "No findings.\n")
+	} else {
+		for i, f := range rep.Findings {
+			writeFinding(w, i+1, f)
+		}
+	}
+
+	writeFalsePositivesText(w, rep.FalsePositives)
+}
+
+func writeExtractedDataText(w io.Writer, items []ExtractedItem) {
+	if len(items) == 0 {
 		return
 	}
 
-	for i, f := range rep.Findings {
-		writeFinding(w, i+1, f)
+	fmt.Fprintf(w, "sensitive data extracted: %d\n", len(items))
+
+	for _, item := range items {
+		fmt.Fprintf(w, "  - %s", item.Title)
+
+		if item.Severity != "" {
+			fmt.Fprintf(w, " [%s]", item.Severity)
+		}
+
+		if item.Endpoint != "" {
+			fmt.Fprintf(w, " (%s)", item.Endpoint)
+		}
+
+		fmt.Fprintf(w, "\n%s\n", indent(item.Data, "      "))
 	}
+
+	fmt.Fprintf(w, "\n")
+}
+
+func writeFalsePositivesText(w io.Writer, items []FalsePositiveItem) {
+	if len(items) == 0 {
+		return
+	}
+
+	fmt.Fprintf(w, "discarded false positives: %d\n", len(items))
+
+	for _, item := range items {
+		fmt.Fprintf(w, "  - %s", item.Title)
+
+		if item.Module != "" {
+			fmt.Fprintf(w, " [%s]", item.Module)
+		}
+
+		if item.Endpoint != "" {
+			fmt.Fprintf(w, " (%s)", item.Endpoint)
+		}
+
+		if item.Reason != "" {
+			fmt.Fprintf(w, ": %s", item.Reason)
+		}
+
+		fmt.Fprintf(w, "\n")
+	}
+
+	fmt.Fprintf(w, "\n")
 }
 
 func writeSurface(w io.Writer, s recon.Surface) {

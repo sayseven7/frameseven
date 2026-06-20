@@ -1,0 +1,131 @@
+package engagement
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/sayseven7/frameseven/internal/finding"
+	"github.com/sayseven7/frameseven/internal/report"
+)
+
+func TestBuildReportIncludesExtractedDataAndExcludesFalsePositives(t *testing.T) {
+	dir := t.TempDir()
+
+	eng, err := Open(dir, "https://preview.owasp-juice.shop")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	// Scanner-detected SQLi rated MEDIUM, later confirmed CRITICAL with a dump.
+	ids, err := eng.AddScanFindings("sqli", []finding.Finding{
+		{Title: "SQL injection in product search", Module: "sqli", Severity: finding.Medium, CWE: "CWE-89", Evidence: finding.Evidence{Response: "suspicious"}},
+	})
+	if err != nil {
+		t.Fatalf("AddScanFindings: %v", err)
+	}
+
+	dump := "admin@juice-sh.op:0192023a7bbd73250516f069df18b500 (admin123)"
+
+	err = eng.Update(ids[0], Patch{
+		Status:        StatusConfirmed,
+		Severity:      finding.Critical,
+		ExtractedData: dump,
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	// A false positive that must be excluded from the body.
+	fpID, err := eng.Add(Finding{
+		Title:             "Exposed admin path /admin",
+		Tool:              "access",
+		SeverityEffective: finding.High,
+		Status:            StatusFalsePositive,
+		TriageReason:      "SPA index.html shell",
+	})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	rep := eng.BuildReport()
+
+	if !rep.Confidential {
+		t.Fatalf("report should be confidential when extracted data is present")
+	}
+
+	if len(rep.ExtractedData) != 1 || !strings.Contains(rep.ExtractedData[0].Data, "admin123") {
+		t.Fatalf("extracted data section missing dump: %+v", rep.ExtractedData)
+	}
+
+	if len(rep.FalsePositives) != 1 || rep.FalsePositives[0].Reason == "" {
+		t.Fatalf("false positive appendix missing entry: %+v", rep.FalsePositives)
+	}
+
+	for _, item := range rep.Findings {
+		if item.Title == "Exposed admin path /admin" {
+			t.Fatalf("false positive leaked into findings body")
+		}
+	}
+
+	if len(rep.Findings) != 1 {
+		t.Fatalf("expected 1 open finding, got %d", len(rep.Findings))
+	}
+
+	if rep.Findings[0].Severity != finding.Critical {
+		t.Fatalf("effective severity not used, got %q", rep.Findings[0].Severity)
+	}
+
+	_ = fpID
+}
+
+func TestBuildReportRendersToAllFormats(t *testing.T) {
+	dir := t.TempDir()
+
+	eng, err := Open(dir, "https://example.com")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	_, err = eng.Add(Finding{
+		Title:             "Database dump via UNION SQLi",
+		Tool:              "manual",
+		SeverityEffective: finding.Critical,
+		CWE:               "CWE-89",
+		ExtractedData:     "users table: 12 rows dumped",
+		Status:            StatusConfirmed,
+	})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	rep := eng.BuildReport()
+
+	text := report.RenderText(rep)
+	for _, want := range []string{"CONFIDENTIAL", "sensitive data extracted", "users table: 12 rows dumped"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("text report missing %q\n%s", want, text)
+		}
+	}
+
+	markdown, err := report.RenderMarkdown(rep)
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+
+	if !strings.Contains(markdown, "## Sensitive Data Extracted") {
+		t.Errorf("markdown missing extracted data section\n%s", markdown)
+	}
+
+	html, err := report.RenderHTML(rep)
+	if err != nil {
+		t.Fatalf("RenderHTML: %v", err)
+	}
+
+	if !strings.Contains(html, "Sensitive data extracted") {
+		t.Errorf("html missing extracted data section")
+	}
+
+	if !strings.Contains(html, "confidential-banner") {
+		t.Errorf("html missing confidentiality banner")
+	}
+}

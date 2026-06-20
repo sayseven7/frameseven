@@ -42,6 +42,51 @@ func RegisterTools(server *mcpsdk.Server) {
 		},
 	}, V1Report)
 
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "frameseven_v1_engagement_open",
+		Title:       "Open Engagement Store",
+		Description: "Create or reopen a persistent engagement store for a target. Scanner findings and manual findings are accumulated here for triage and a consolidated report.",
+		Annotations: &mcpsdk.ToolAnnotations{
+			IdempotentHint: idempotentHint,
+		},
+	}, V1EngagementOpen)
+
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "frameseven_v1_finding_add",
+		Title:       "Add Manual Finding",
+		Description: "Inject a manual finding into an engagement store, including extracted_data (dumps, cracked credentials, exfiltrated files) which is always included in the report.",
+		Annotations: &mcpsdk.ToolAnnotations{
+			DestructiveHint: &destructiveHint,
+		},
+	}, V1FindingAdd)
+
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "frameseven_v1_finding_update",
+		Title:       "Update Finding",
+		Description: "Patch a stored finding: change triage status, override severity, or attach extracted data and proof without losing the original scanner evidence.",
+		Annotations: &mcpsdk.ToolAnnotations{
+			DestructiveHint: &destructiveHint,
+		},
+	}, V1FindingUpdate)
+
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "frameseven_v1_triage",
+		Title:       "Triage Findings",
+		Description: "Run automatic false-positive heuristics (such as SPA index.html catch-all detection) and apply manual triage overrides to an engagement store.",
+		Annotations: &mcpsdk.ToolAnnotations{
+			DestructiveHint: &destructiveHint,
+		},
+	}, V1Triage)
+
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "frameseven_v1_report_engagement",
+		Title:       "Render Engagement Report",
+		Description: "Render the consolidated, triaged engagement report as text, Markdown, HTML, PDF, or all formats. False positives are excluded from the body and listed in an appendix; extracted data gets its own section.",
+		Annotations: &mcpsdk.ToolAnnotations{
+			ReadOnlyHint: readOnlyHint,
+		},
+	}, V1ReportEngagement)
+
 	for _, tool := range scanner.Tools {
 		scanTool := tool
 		mcpsdk.AddTool(server, &mcpsdk.Tool{

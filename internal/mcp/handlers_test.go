@@ -62,7 +62,7 @@ func TestV1ScanToolRequiresActiveScanAcceptance(t *testing.T) {
 }
 
 func TestBuildScanToolOutput(t *testing.T) {
-	output := buildScanToolOutput("recon", []string{"recon"}, reportFixture(), false)
+	output := buildScanToolOutput("recon", []string{"recon"}, reportFixture(), false, "")
 
 	if output.RequestedTool != "recon" {
 		t.Errorf("requested_tool = %q", output.RequestedTool)

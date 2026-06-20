@@ -71,6 +71,39 @@ Scanner tools:
 Every scanner tool requires `active_scan_accepted: true` because it may send
 active security probes to the target.
 
+Engagement tools:
+
+- `frameseven_v1_engagement_open`: creates or reopens a persistent engagement
+  store for a target and returns its `engagement_id`.
+- `frameseven_v1_finding_add`: injects a manual finding, including
+  `extracted_data` (database dumps, cracked credentials, exfiltrated files)
+  that the scanner cannot produce. Manual findings are always kept in the report.
+- `frameseven_v1_finding_update`: patches a stored finding to change its triage
+  status, override its severity, or attach extracted data and proof without
+  losing the original scanner evidence.
+- `frameseven_v1_triage`: applies automatic false-positive heuristics (such as
+  the SPA `index.html` catch-all that returns 200 for `/admin`, `/.env`,
+  `/actuator`, and similar routes) and any manual triage overrides.
+- `frameseven_v1_report_engagement`: renders the consolidated, triaged report
+  from the store in `text`, `markdown`, `html`, `pdf`, `both`, or `all`.
+
+The scanner tools and `frameseven_v1_report` accept an optional `engagement_id`.
+When set, their findings are appended to that store (deduplicated by signature)
+so a full assessment can mix automated scans with manual work.
+
+### Engagement Store
+
+Stores are persisted on disk under `./engagements/<host>-<shortid>/`
+(`meta.json` plus one finding per line in `findings.jsonl`). Override the base
+directory with the `FRAMESEVEN_ENGAGEMENTS_DIR` environment variable. Reopening
+the same target returns the same store, so appended findings deduplicate across
+runs. The consolidated report excludes false positives (listed instead in a
+discarded-FP appendix), uses each finding's effective severity (a manual
+override prevails over the scanner severity), surfaces every `extracted_data`
+value in a dedicated "Sensitive Data Extracted" section, and flags the report
+confidential when sensitive data is present. Each open finding links the
+remediation playbook resource that matches its CWE, OWASP category, or tags.
+
 ## Resources
 
 The server exposes the pentest playbooks from
