@@ -25,6 +25,8 @@ var payloads = []string{
 	"//" + evilHost,
 	"/\\" + evilHost,
 	"javascript:alert(1)",
+	"data:text/html,<script>alert(1)</script>",
+	"vbscript:msgbox(1)",
 	"https://" + evilHost + "%2F@legitimate.com",
 }
 
@@ -102,7 +104,7 @@ func testParam(cfg *config.Config, client *http.Client, p recon.Param) (finding.
 			},
 			NextSteps: []string{
 				"Redirect only to an allowlist of known-safe paths or hosts.",
-				"Reject absolute URLs and protocol-relative values in redirect parameters.",
+				"Reject absolute URLs, protocol-relative values, and executable URL schemes in redirect parameters.",
 			},
 		}, true
 	}
@@ -110,11 +112,11 @@ func testParam(cfg *config.Config, client *http.Client, p recon.Param) (finding.
 	return finding.Finding{}, false
 }
 
-// confirmRedirect returns the external destination when the response redirects
-// off-origin, or an empty string when it does not.
+// confirmRedirect returns the external or executable destination when the
+// response redirects to one, or an empty string when it does not.
 func confirmRedirect(resp *response) string {
 	if resp.location != "" {
-		if strings.Contains(resp.location, evilHost) || strings.HasPrefix(strings.ToLower(resp.location), "javascript:") {
+		if strings.Contains(resp.location, evilHost) || hasExecutableScheme(resp.location) {
 			return resp.location
 		}
 	}
@@ -126,6 +128,14 @@ func confirmRedirect(resp *response) string {
 	}
 
 	return ""
+}
+
+func hasExecutableScheme(raw string) bool {
+	value := strings.ToLower(strings.TrimSpace(raw))
+
+	return strings.HasPrefix(value, "javascript:") ||
+		strings.HasPrefix(value, "data:") ||
+		strings.HasPrefix(value, "vbscript:")
 }
 
 func request(cfg *config.Config, client *http.Client, p recon.Param, value string) *response {

@@ -49,6 +49,29 @@ func TestRunDetectsOpenRedirect(t *testing.T) {
 	t.Errorf("expected open redirect finding, got %+v", findings)
 }
 
+func TestConfirmRedirectDetectsExecutableSchemes(t *testing.T) {
+	tests := []struct {
+		name     string
+		location string
+		want     bool
+	}{
+		{name: "javascript", location: "javascript:alert(1)", want: true},
+		{name: "data", location: "data:text/html,<script>alert(1)</script>", want: true},
+		{name: "vbscript", location: "vbscript:msgbox(1)", want: true},
+		{name: "mixed case", location: "JaVaScRiPt:alert(1)", want: true},
+		{name: "safe internal path", location: "/home", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := confirmRedirect(&response{location: tt.location}) != ""
+			if got != tt.want {
+				t.Fatalf("confirmRedirect() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRunNoFalsePositive(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Always redirect to a fixed internal path regardless of input.
