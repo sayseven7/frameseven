@@ -478,8 +478,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  docker_image_v1:
-    name: Build and publish Docker image v1
+  docker_image:
+    name: Build and publish Docker image ${{ env.RELEASE_TAG }}
     runs-on: ubuntu-latest
     needs:
       - quality
@@ -504,9 +504,11 @@ jobs:
         shell: bash
         run: |
           version="${RELEASE_TAG#v}"
-          mkdir -p docker-build/v1/bin
+          docker_build_dir="docker-build/$version"
 
-          cat > docker-build/v1/Dockerfile <<'DOCKERFILE'
+          mkdir -p "$docker_build_dir/bin"
+
+          cat > "$docker_build_dir/Dockerfile" <<'DOCKERFILE'
           FROM debian:bookworm-slim
 
           RUN apt-get update && \
@@ -544,11 +546,11 @@ jobs:
 
           go build \
             -ldflags="-X main.buildVersion=$version" \
-            -o docker-build/v1/bin/frameseven \
+            -o "$docker_build_dir/bin/frameseven" \
             ./cmd/cli/v1
 
           go build \
-            -o docker-build/v1/bin/frameseven-mcp \
+            -o "$docker_build_dir/bin/frameseven-mcp" \
             ./cmd/mcp
 
       - name: Log in to GitHub Container Registry
@@ -563,10 +565,10 @@ jobs:
           IMAGE_NAME: ghcr.io/${{ github.repository }}
         run: |
           version="${RELEASE_TAG#v}"
+          docker_build_dir="docker-build/$version"
           image_name="$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
 
           tags=(
-            --tag "$image_name:$RELEASE_TAG"
             --tag "$image_name:$version"
           )
 
@@ -577,7 +579,7 @@ jobs:
           docker buildx create --use
 
           docker buildx build \
-            --file docker-build/v1/Dockerfile \
+            --file "$docker_build_dir/Dockerfile" \
             --platform linux/amd64 \
             --push \
             --provenance=false \
@@ -585,16 +587,16 @@ jobs:
             --label org.opencontainers.image.title=frameseven \
             --label "org.opencontainers.image.description=frameseven CLI v1 and MCP server with runtime dependencies" \
             --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
-            --label "org.opencontainers.image.version=$RELEASE_TAG" \
+            --label "org.opencontainers.image.version=$version" \
             "${tags[@]}" \
-            docker-build/v1
+            "$docker_build_dir"
 
   publish:
     name: Publish release artifacts
     runs-on: ubuntu-latest
     needs:
       - build
-      - docker_image_v1
+      - docker_image
     permissions:
       contents: write
 
