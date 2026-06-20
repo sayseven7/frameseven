@@ -16,6 +16,7 @@ Each release provides:
 - Debian packages for `amd64` and `arm64`
 - RPM packages for `amd64` and `arm64`
 - Arch Linux packages for `amd64` and `arm64`
+- Docker image v1 for `linux/amd64` and `linux/arm64`
 - A `SHA256SUMS` file for artifact verification
 
 Release tags use the `vX.Y.Z` format. Artifact and package versions omit the
@@ -119,6 +120,100 @@ sudo install -m 0755 \
 
 Download and extract the Windows `.zip` file from the release page. Add the
 directory containing `frameseven-cli.exe` or `frameseven-mcp.exe` to `PATH`.
+
+## Docker Image v1
+
+Release images are published to GitHub Container Registry:
+
+```text
+ghcr.io/sayseven7/frameseven
+```
+
+The image includes the CLI v1 command, the MCP server, Python 3 with `fpdf2`,
+Nmap, sqlmap, Chromium for browser authentication capture, certificates, and
+font packages required by the runtime.
+
+For release `v1.2.3`, the Docker tags are `v1.2.3` and `1.2.3`. Stable
+releases also update `latest`.
+
+Pull a versioned release image:
+
+```bash
+docker pull ghcr.io/sayseven7/frameseven:v<version>
+```
+
+Run a CLI scan and keep reports on the host:
+
+```bash
+mkdir -p reports
+docker run --rm \
+  -v "$PWD/reports:/workspace/reports" \
+  ghcr.io/sayseven7/frameseven:v<version> \
+  -url https://target.example \
+  -out /workspace/reports
+```
+
+Run all Framework v1 tools, including the external `nmap` and `sqlmap`
+modules:
+
+```bash
+docker run --rm \
+  -v "$PWD/reports:/workspace/reports" \
+  ghcr.io/sayseven7/frameseven:v<version> \
+  -url https://target.example \
+  -tools all \
+  -out /workspace/reports
+```
+
+Start the MCP server from the same image by overriding the entrypoint:
+
+```bash
+docker run --rm -i \
+  --entrypoint frameseven-mcp \
+  ghcr.io/sayseven7/frameseven:v<version> \
+  -transport stdio
+```
+
+Run the MCP server over Streamable HTTP:
+
+```bash
+docker run --rm \
+  -p 127.0.0.1:8080:8080 \
+  --entrypoint frameseven-mcp \
+  ghcr.io/sayseven7/frameseven:v<version> \
+  -transport http \
+  -addr 0.0.0.0:8080
+```
+
+The HTTP MCP endpoint is `/mcp`. Keep the port bound to localhost or another
+access-controlled network.
+
+For authenticated scans with `-auth-browser`, the container must be able to
+open a visible Chromium window through your host display server. On Linux/X11:
+
+```bash
+xhost +local:
+docker run --rm -it \
+  -e DISPLAY="$DISPLAY" \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  -v "$PWD/reports:/workspace/reports" \
+  ghcr.io/sayseven7/frameseven:v<version> \
+  -url https://target.example \
+  -auth-browser \
+  -out /workspace/reports
+```
+
+If the host reports directory is not writable by the image user, pass your user
+and group IDs:
+
+```bash
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD/reports:/workspace/reports" \
+  ghcr.io/sayseven7/frameseven:v<version> \
+  -url https://target.example \
+  -out /workspace/reports
+```
 
 ## Verify a Download
 

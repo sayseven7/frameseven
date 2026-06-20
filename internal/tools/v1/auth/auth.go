@@ -74,6 +74,10 @@ func Capture(target string) (SessionResult, error) {
 	}
 
 	l := launcher.New().Headless(false)
+	if browserPath, ok := launcher.LookPath(); ok {
+		l = l.Bin(browserPath)
+	}
+
 	// On Linux the Chromium SUID sandbox is frequently unavailable (restricted
 	// kernel, containers, no setuid helper), which aborts startup with a fatal
 	// "No usable sandbox!" error. Disable it there so capture still works.

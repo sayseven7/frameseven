@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+bin
+build
+deb
+dist
+coverage.out
+rpm
+rpm-mcp
+arch
+reports
+*.deb
+*.rpm
+*.pkg.tar.zst
+*.tar.gz
+*.zip
