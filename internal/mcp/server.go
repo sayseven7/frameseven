@@ -43,7 +43,13 @@ Tips:
 Resources:
   - Pentest playbooks from yaklang/hack-skills are exposed as MCP resources
     under skill://hack-skills/v1/. Read them for attack methodology and payload
-    references (for example skill://hack-skills/v1/sqli-sql-injection/SKILL.md).`
+    references (for example skill://hack-skills/v1/sqli-sql-injection/SKILL.md).
+
+Before running any test, analysis, or exploitation, always load and apply
+the relevant skill from the skills directory. Use the available resources
+to guide your approach (for example skill://hack-skills/v1/xss-cross-site-scripting/SKILL.md
+before testing XSS, skill://hack-skills/v1/sqli-sql-injection/SKILL.md before
+testing SQL injection, and so on).`
 
 // NewServer builds the FrameSeven MCP server.
 func NewServer() *mcpsdk.Server {
