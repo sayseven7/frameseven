@@ -22,7 +22,7 @@ func TestRunDetectsDefaultCredentials(t *testing.T) {
 		}
 
 		body, _ := io.ReadAll(r.Body)
-		if strings.Contains(string(body), "admin") && strings.Contains(string(body), "admin") {
+		if strings.Contains(string(body), `"password":"admin"`) {
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprint(w, `{"token":"abc.def.ghi"}`)
 			return
