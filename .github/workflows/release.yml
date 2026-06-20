@@ -517,8 +517,6 @@ jobs:
                 chromium \
                 fonts-dejavu-core \
                 fonts-liberation \
-                gcc \
-                libc6-dev \
                 nmap \
                 python3 \
                 python3-venv \
