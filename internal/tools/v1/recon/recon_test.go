@@ -77,14 +77,14 @@ func TestProbeSensitiveFiles(t *testing.T) {
 
 	found := map[string]bool{}
 	for _, f := range findings {
-		found[f.Evidence.Extracted] = true
+		found[f.Title] = true
 	}
 
-	if !found["/.git/HEAD"] {
+	if !found["Exposed sensitive file: /.git/HEAD"] {
 		t.Errorf("expected /.git/HEAD to be reported, findings: %+v", findings)
 	}
 
-	if !found["/robots.txt"] {
+	if !found["Exposed sensitive file: /robots.txt"] {
 		t.Errorf("expected /robots.txt to be reported")
 	}
 }

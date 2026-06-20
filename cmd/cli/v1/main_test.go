@@ -144,7 +144,7 @@ func TestRunWizardUsesDefaults(t *testing.T) {
 		t.Errorf("user agent = %q, want a random agent from the pool", received.UserAgent)
 	}
 
-	if strings.Join(received.SelectedTools, ",") != "recon,sqli,access,ssrf,lfi,misconfig,ratelimit,cve" {
+	if strings.Join(received.SelectedTools, ",") != "recon,sqli,access,ssrf,lfi,xss,xxe,cmdi,ssti,redirect,authtest,misconfig,ratelimit,cve" {
 		t.Errorf("selected tools = %v", received.SelectedTools)
 	}
 
@@ -331,7 +331,7 @@ func TestRunAcceptsAllTools(t *testing.T) {
 		t.Fatalf("exit code = %d, stderr = %q", code, stderr.String())
 	}
 
-	want := "recon,sqli,access,ssrf,lfi,misconfig,ratelimit,cve,crawler,content,subdomain,ports,nmap,sqlmap,bannergrab"
+	want := "recon,sqli,access,ssrf,lfi,xss,xxe,cmdi,ssti,redirect,authtest,misconfig,ratelimit,cve,crawler,content,subdomain,ports,nmap,sqlmap,bannergrab"
 	if strings.Join(received.SelectedTools, ",") != want {
 		t.Errorf("selected tools = %v", received.SelectedTools)
 	}

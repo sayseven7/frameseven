@@ -270,7 +270,7 @@ func TestNormalizeToolsDefaultsToCoreTools(t *testing.T) {
 		t.Fatalf("NormalizeTools: %v", err)
 	}
 
-	want := "recon,sqli,access,ssrf,lfi,misconfig,ratelimit,cve"
+	want := "recon,sqli,access,ssrf,lfi,xss,xxe,cmdi,ssti,redirect,authtest,misconfig,ratelimit,cve"
 	if strings.Join(got, ",") != want {
 		t.Fatalf("tools = %v", got)
 	}
@@ -282,7 +282,7 @@ func TestNormalizeToolsAllowsAllOfficialTools(t *testing.T) {
 		t.Fatalf("NormalizeTools: %v", err)
 	}
 
-	want := "recon,sqli,access,ssrf,lfi,misconfig,ratelimit,cve,crawler,content,subdomain,ports,nmap,sqlmap,bannergrab"
+	want := "recon,sqli,access,ssrf,lfi,xss,xxe,cmdi,ssti,redirect,authtest,misconfig,ratelimit,cve,crawler,content,subdomain,ports,nmap,sqlmap,bannergrab"
 	if strings.Join(got, ",") != want {
 		t.Fatalf("tools = %v", got)
 	}

@@ -20,7 +20,9 @@ import (
 	"github.com/sayseven7/frameseven/internal/finding"
 	"github.com/sayseven7/frameseven/internal/report"
 	"github.com/sayseven7/frameseven/internal/tools/v1/access"
+	authtest "github.com/sayseven7/frameseven/internal/tools/v1/auth_test"
 	"github.com/sayseven7/frameseven/internal/tools/v1/bannergrab"
+	"github.com/sayseven7/frameseven/internal/tools/v1/cmdi"
 	"github.com/sayseven7/frameseven/internal/tools/v1/content"
 	"github.com/sayseven7/frameseven/internal/tools/v1/crawler"
 	"github.com/sayseven7/frameseven/internal/tools/v1/external/nmap"
@@ -30,9 +32,13 @@ import (
 	"github.com/sayseven7/frameseven/internal/tools/v1/ports"
 	"github.com/sayseven7/frameseven/internal/tools/v1/ratelimit"
 	"github.com/sayseven7/frameseven/internal/tools/v1/recon"
+	"github.com/sayseven7/frameseven/internal/tools/v1/redirect"
 	"github.com/sayseven7/frameseven/internal/tools/v1/sqli"
 	"github.com/sayseven7/frameseven/internal/tools/v1/ssrf"
+	"github.com/sayseven7/frameseven/internal/tools/v1/ssti"
 	"github.com/sayseven7/frameseven/internal/tools/v1/subdomain"
+	"github.com/sayseven7/frameseven/internal/tools/v1/xss"
+	"github.com/sayseven7/frameseven/internal/tools/v1/xxe"
 )
 
 // RunFunc is the common signature for every Framework v1 scanner tool.
@@ -54,6 +60,12 @@ var Tools = []Tool{
 	{Name: "access", Description: "Unauthenticated endpoint, admin path, and IDOR checks", Activity: "testing unauthenticated access and IDOR behavior", EnabledByDefault: true, Run: access.Run},
 	{Name: "ssrf", Description: "Internal service and cloud metadata SSRF checks", Activity: "testing server-side request forgery vectors", EnabledByDefault: true, Run: ssrf.Run},
 	{Name: "lfi", Description: "Local file inclusion and path traversal checks", Activity: "testing file inclusion and path traversal vectors", EnabledByDefault: true, Run: lfi.Run},
+	{Name: "xss", Description: "Reflected, stored and DOM XSS detection", Activity: "testing cross-site scripting vectors", EnabledByDefault: true, Run: xss.Run},
+	{Name: "xxe", Description: "XXE and XML injection detection with file read", Activity: "testing XML injection and XXE vectors", EnabledByDefault: true, Run: xxe.Run},
+	{Name: "cmdi", Description: "OS command injection detection and RCE confirmation", Activity: "testing command injection vectors", EnabledByDefault: true, Run: cmdi.Run},
+	{Name: "ssti", Description: "Server-side template injection detection and RCE", Activity: "testing server-side template injection", EnabledByDefault: true, Run: ssti.Run},
+	{Name: "redirect", Description: "Open redirect detection for phishing and token theft", Activity: "testing open redirect vectors", EnabledByDefault: true, Run: redirect.Run},
+	{Name: "authtest", Description: "Default credentials and authentication weakness detection", Activity: "testing authentication weaknesses", EnabledByDefault: true, Run: authtest.Run},
 	{Name: "misconfig", Description: "Security header, HTTP method, CORS, and TLS checks", Activity: "checking HTTP and TLS configuration", EnabledByDefault: true, Run: misconfig.Run},
 	{Name: "ratelimit", Description: "Request burst and rate-limit behavior checks", Activity: "checking request rate-limit behavior", EnabledByDefault: true, Run: ratelimit.Run},
 	{Name: "cve", Description: "NVD CVE lookup for detected product versions", Activity: "looking up CVEs for detected products", EnabledByDefault: true, Run: cve.Run},
@@ -321,6 +333,8 @@ func includeRequiredTools(selected []string) []string {
 	for _, name := range selected {
 		switch name {
 		case "sqli", "access", "ssrf", "lfi", "cve", "crawler":
+			needsRecon = true
+		case "xss", "xxe", "cmdi", "ssti", "redirect", "authtest":
 			needsRecon = true
 		}
 	}

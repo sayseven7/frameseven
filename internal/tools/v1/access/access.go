@@ -3,6 +3,7 @@
 package access
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -15,6 +16,14 @@ import (
 	"github.com/sayseven7/frameseven/internal/finding"
 	"github.com/sayseven7/frameseven/internal/tools/v1/recon"
 )
+
+// spaSignatures mark an HTML body as a single-page-app shell, the generic 200
+// catch-all that many SPAs return for unknown paths. They must not be reported
+// as exposed sensitive endpoints.
+var spaSignatures = []string{
+	"<app-root>", "ng-version", "data-reactroot", "__NEXT_DATA__",
+	"<div id=\"root\"", "<div id=\"app\"", "window.__nuxt__",
+}
 
 // adminPaths are endpoints that should normally require authentication.
 var adminPaths = []string{
@@ -35,9 +44,10 @@ var adminPaths = []string{
 }
 
 type response struct {
-	status int
-	body   string
-	dump   string
+	status      int
+	body        string
+	dump        string
+	contentType string
 }
 
 // Run probes unauthenticated access and IDOR.
@@ -61,6 +71,8 @@ func unauthEndpoints(cfg *config.Config, client *http.Client, base *url.URL) []f
 	var findings []finding.Finding
 	reported := map[string]bool{}
 
+	root := get(cfg, client, base.String())
+
 	for _, path := range allAdminPaths(cfg) {
 		ref, err := base.Parse(path)
 		if err != nil {
@@ -81,6 +93,10 @@ func unauthEndpoints(cfg *config.Config, client *http.Client, base *url.URL) []f
 
 		switch resp.status {
 		case http.StatusOK:
+			if isSPAIndex(resp, root) {
+				continue
+			}
+
 			findings = append(findings, finding.Finding{
 				Title:       "Sensitive endpoint reachable without authentication: " + path,
 				Module:      "access",
@@ -92,7 +108,7 @@ func unauthEndpoints(cfg *config.Config, client *http.Client, base *url.URL) []f
 				Evidence: finding.Evidence{
 					Request:   resp.dump,
 					Response:  trim(resp.body, 400),
-					Extracted: path,
+					Extracted: unauthExtracted(path, resp),
 				},
 				NextSteps: []string{
 					"Require authentication and authorization on this endpoint.",
@@ -156,6 +172,54 @@ func appendAdminPath(paths []string, seen map[string]bool, path string) []string
 	seen[path] = true
 
 	return append(paths, path)
+}
+
+// isSPAIndex reports whether a 200 HTML response is the single-page-app shell
+// rather than a distinct sensitive endpoint. It matches known SPA markers and
+// treats a body whose size is within 5% of the root page as the SPA catch-all.
+func isSPAIndex(resp, root *response) bool {
+	if !strings.Contains(strings.ToLower(resp.contentType), "text/html") {
+		return false
+	}
+
+	for _, sig := range spaSignatures {
+		if strings.Contains(resp.body, sig) {
+			return true
+		}
+	}
+
+	if root != nil && root.status == http.StatusOK && sizeWithin(resp.body, root.body, 0.05) {
+		return true
+	}
+
+	return false
+}
+
+// sizeWithin reports whether two bodies are the same size within the tolerance.
+func sizeWithin(a, b string, tolerance float64) bool {
+	la, lb := len(a), len(b)
+	if la == 0 || lb == 0 {
+		return false
+	}
+
+	diff := la - lb
+	if diff < 0 {
+		diff = -diff
+	}
+
+	return float64(diff)/float64(lb) <= tolerance
+}
+
+// unauthExtracted renders the evidence for an exposed endpoint, including the
+// JSON body and its exact size when the response is JSON.
+func unauthExtracted(path string, resp *response) string {
+	if !strings.Contains(strings.ToLower(resp.contentType), "json") {
+		return path
+	}
+
+	return path + "\nContent-Type: " + resp.contentType +
+		"\nSize: " + strconv.Itoa(len(resp.body)) + " bytes\n\n" +
+		trim(resp.body, 500)
 }
 
 var idRe = regexp.MustCompile(`^\d+$`)
@@ -229,6 +293,14 @@ func probeIDOR(cfg *config.Config, client *http.Client, p recon.Param, value str
 
 		extracted := p.Name + "=" + value + " -> " + p.Name + "=" + strconv.Itoa(neighbor)
 		title := idorTitle(severity, "parameter '"+p.Name+"'")
+
+		if severity == finding.High {
+			if summary := enumerateIDs(func(id int) *response {
+				return getParam(cfg, client, p, strconv.Itoa(id))
+			}); summary != "" {
+				extracted += "\n" + summary
+			}
+		}
 
 		return buildIDOR(severity, title, extracted, marker, resp), true
 	}
@@ -312,6 +384,14 @@ func probePathIDOR(cfg *config.Config, client *http.Client, u *url.URL, segments
 
 		extracted := template + ": " + value + " -> " + strconv.Itoa(neighbor)
 		title := idorTitle(severity, "path '"+template+"'")
+
+		if severity == finding.High {
+			if summary := enumerateIDs(func(id int) *response {
+				return get(cfg, client, withSegment(u, segments, idx, strconv.Itoa(id)))
+			}); summary != "" {
+				extracted += "\n" + summary
+			}
+		}
 
 		return buildIDOR(severity, title, extracted, marker, resp), true
 	}
@@ -417,6 +497,53 @@ func classifyNeighbor(resource string, base, neighbor *response) (finding.Severi
 	}
 
 	return finding.Info, "", true
+}
+
+// enumerateIDs confirms the breadth of a verified IDOR by requesting identifiers
+// 1..20 and summarizing how many returned distinct HTTP 200 data, a sample of
+// each, and any email addresses found.
+func enumerateIDs(fetch func(id int) *response) string {
+	seen := map[string]bool{}
+	emails := map[string]bool{}
+	var samples []string
+	count := 0
+
+	for id := 1; id <= 20; id++ {
+		resp := fetch(id)
+		if resp == nil || resp.status != http.StatusOK || seen[resp.body] {
+			continue
+		}
+
+		seen[resp.body] = true
+		count++
+
+		if len(samples) < 5 {
+			samples = append(samples, "id="+strconv.Itoa(id)+": "+trim(resp.body, 300))
+		}
+
+		for _, m := range emailRe.FindAllString(resp.body, -1) {
+			emails[m] = true
+		}
+	}
+
+	if count == 0 {
+		return ""
+	}
+
+	summary := fmt.Sprintf("enumerated %d identifiers returning distinct HTTP 200 data", count)
+
+	if len(emails) > 0 {
+		var list []string
+		for email := range emails {
+			list = append(list, email)
+		}
+
+		summary += "\nemails: " + strings.Join(list, ", ")
+	}
+
+	summary += "\nsamples:\n" + strings.Join(samples, "\n")
+
+	return summary
 }
 
 // buildIDOR assembles an access-control finding for a confirmed object reference.
@@ -581,6 +708,15 @@ func probeCollectionItems(cfg *config.Config, client *http.Client, u *url.URL, r
 	template := basePath + "/{id}"
 	extracted := basePath + "/1 .. /3 -> distinct " + resource + " objects (HTTP 200)"
 
+	if summary := enumerateIDs(func(id int) *response {
+		clone := *u
+		clone.Path = basePath + "/" + strconv.Itoa(id)
+
+		return get(cfg, client, clone.String())
+	}); summary != "" {
+		extracted += "\n" + summary
+	}
+
 	return buildIDOR(finding.High, idorTitle(finding.High, "path '"+template+"'"), extracted, marker, other), true
 }
 
@@ -645,7 +781,12 @@ func get(cfg *config.Config, client *http.Client, target string) *response {
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
-	return &response{status: resp.StatusCode, body: string(body), dump: string(dump)}
+	return &response{
+		status:      resp.StatusCode,
+		body:        string(body),
+		dump:        string(dump),
+		contentType: resp.Header.Get("Content-Type"),
+	}
 }
 
 func trim(s string, max int) string {

@@ -10,6 +10,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/sayseven7/frameseven/internal/config"
@@ -359,6 +360,10 @@ func probeSensitiveFiles(cfg *config.Config, client *http.Client, base *url.URL,
 
 		surface.SensitiveFiles = append(surface.SensitiveFiles, path)
 
+		if path == "/robots.txt" {
+			addRobotsPaths(base, body, surface)
+		}
+
 		findings = append(findings, finding.Finding{
 			Title:       "Exposed sensitive file: " + path,
 			Module:      "recon",
@@ -370,7 +375,7 @@ func probeSensitiveFiles(cfg *config.Config, client *http.Client, base *url.URL,
 			Evidence: finding.Evidence{
 				Request:   dump,
 				Response:  snippet(body, 400),
-				Extracted: path,
+				Extracted: fileContent(resp, body),
 			},
 			NextSteps: []string{
 				"Remove the file from the web root or block it at the server level.",
@@ -380,6 +385,52 @@ func probeSensitiveFiles(cfg *config.Config, client *http.Client, base *url.URL,
 	}
 
 	return findings
+}
+
+// fileContent renders the downloaded sensitive file with its content type, size,
+// and the first 2000 characters of its body for the finding evidence.
+func fileContent(resp *http.Response, body string) string {
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "unknown"
+	}
+
+	return "Content-Type: " + contentType + "\n" +
+		"Size: " + strconv.Itoa(len(body)) + " bytes\n\n" +
+		snippet(body, 2000)
+}
+
+var robotsPathRe = regexp.MustCompile(`(?im)^\s*(?:Disallow|Allow)\s*:\s*(\S+)`)
+
+// addRobotsPaths extracts paths listed under Disallow/Allow in robots.txt and
+// adds them to the surface so other tools test those routes too.
+func addRobotsPaths(base *url.URL, body string, surface *Surface) {
+	seen := map[string]bool{}
+	for _, endpoint := range surface.Endpoints {
+		seen[endpoint] = true
+	}
+
+	for _, m := range robotsPathRe.FindAllStringSubmatch(body, -1) {
+		path := strings.TrimSpace(m[1])
+		if path == "" || path == "*" || path == "/" {
+			continue
+		}
+
+		ref, err := base.Parse(path)
+		if err != nil || ref.Hostname() != base.Hostname() {
+			continue
+		}
+
+		ref.Fragment = ""
+		endpoint := ref.String()
+
+		if seen[endpoint] {
+			continue
+		}
+
+		seen[endpoint] = true
+		surface.Endpoints = append(surface.Endpoints, endpoint)
+	}
 }
 
 func technologyFinding(techs []Technology, requestDump string) finding.Finding {
