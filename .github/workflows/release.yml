@@ -479,7 +479,7 @@ jobs:
           retention-days: 7
 
   docker_image:
-    name: Build and publish Docker image ${{ env.RELEASE_TAG }}
+    name: Build and publish Docker image
     runs-on: ubuntu-latest
     needs:
       - quality
