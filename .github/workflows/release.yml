@@ -548,7 +548,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build
-      - docker
+      - docker_image_v1
     permissions:
       contents: write
 
