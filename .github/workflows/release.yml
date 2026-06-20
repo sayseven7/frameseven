@@ -527,15 +527,12 @@ jobs:
           version="${RELEASE_TAG#v}"
           mkdir -p docker-build/v1/bin
 
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
-            -trimpath \
-            -ldflags="-s -w -X main.buildVersion=$version" \
+          go build \
+            -ldflags="-X main.buildVersion=$version" \
             -o docker-build/v1/bin/frameseven \
             ./cmd/cli/v1
 
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
-            -trimpath \
-            -ldflags="-s -w" \
+          go build \
             -o docker-build/v1/bin/frameseven-mcp \
             ./cmd/mcp
 
