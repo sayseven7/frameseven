@@ -130,8 +130,8 @@ ghcr.io/sayseven7/frameseven
 ```
 
 The image includes the CLI v1 command, the MCP server, Python 3 with `fpdf2`,
-Nmap, sqlmap, Chromium for browser authentication capture, certificates, and
-font packages required by the runtime.
+Nmap, sqlmap, GCC, Chromium for browser authentication capture, certificates,
+and font packages required by the runtime.
 
 For release `v1.2.3`, the Docker tags are `v1.2.3` and `1.2.3`. Stable
 releases also update `latest`.

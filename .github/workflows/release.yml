@@ -493,6 +493,13 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
       - name: Prepare Docker image tags
         id: docker-tags
         shell: bash
@@ -514,6 +521,28 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Build Docker image binaries
+        shell: bash
+        run: |
+          version="${RELEASE_TAG#v}"
+
+          for goarch in amd64 arm64; do
+            output_dir="docker-build/v1/bin/linux/$goarch"
+            mkdir -p "$output_dir"
+
+            GOOS=linux GOARCH="$goarch" CGO_ENABLED=0 go build \
+              -trimpath \
+              -ldflags="-s -w -X main.buildVersion=$version" \
+              -o "$output_dir/frameseven" \
+              ./cmd/cli/v1
+
+            GOOS=linux GOARCH="$goarch" CGO_ENABLED=0 go build \
+              -trimpath \
+              -ldflags="-s -w" \
+              -o "$output_dir/frameseven-mcp" \
+              ./cmd/mcp
+          done
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -530,7 +559,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: docker-build/v1
           file: docker/v1/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
@@ -540,8 +569,6 @@ jobs:
             org.opencontainers.image.description=frameseven CLI v1 and MCP server with runtime dependencies
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ env.RELEASE_TAG }}
-          build-args: |
-            VERSION=${{ env.RELEASE_TAG }}
 
   publish:
     name: Publish release artifacts

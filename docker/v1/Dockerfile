@@ -1,28 +1,7 @@
-ARG GO_VERSION=1.26.4
-
-FROM golang:${GO_VERSION}-bookworm AS build
-
-WORKDIR /src
-
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
-
-ARG VERSION=development
-RUN version="${VERSION#v}" && \
-    CGO_ENABLED=0 go build \
-      -trimpath \
-      -ldflags="-s -w -X main.buildVersion=${version}" \
-      -o /out/frameseven \
-      ./cmd/cli/v1 && \
-    CGO_ENABLED=0 go build \
-      -trimpath \
-      -ldflags="-s -w" \
-      -o /out/frameseven-mcp \
-      ./cmd/mcp
-
 FROM debian:bookworm-slim
+
+ARG TARGETOS
+ARG TARGETARCH
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -30,6 +9,8 @@ RUN apt-get update && \
       chromium \
       fonts-dejavu-core \
       fonts-liberation \
+      gcc \
+      libc6-dev \
       nmap \
       python3 \
       python3-venv \
@@ -44,8 +25,8 @@ RUN useradd --create-home --uid 1000 --shell /bin/sh frameseven && \
     mkdir -p /workspace && \
     chown -R frameseven:frameseven /workspace /home/frameseven
 
-COPY --from=build /out/frameseven /usr/local/bin/frameseven
-COPY --from=build /out/frameseven-mcp /usr/local/bin/frameseven-mcp
+COPY --chmod=0755 bin/${TARGETOS}/${TARGETARCH}/frameseven /usr/local/bin/frameseven
+COPY --chmod=0755 bin/${TARGETOS}/${TARGETARCH}/frameseven-mcp /usr/local/bin/frameseven-mcp
 
 ENV FRAMESEVEN_PYTHON=/opt/frameseven-python/bin/python
 
