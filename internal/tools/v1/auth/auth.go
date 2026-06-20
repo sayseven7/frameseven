@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -72,7 +73,14 @@ func Capture(target string) (SessionResult, error) {
 		return SessionResult{}, err
 	}
 
-	controlURL, err := launcher.New().Headless(false).Launch()
+	l := launcher.New().Headless(false)
+	// On Linux the Chromium SUID sandbox is frequently unavailable (restricted
+	// kernel, containers, no setuid helper), which aborts startup with a fatal
+	// "No usable sandbox!" error. Disable it there so capture still works.
+	if runtime.GOOS == "linux" {
+		l = l.NoSandbox(true)
+	}
+	controlURL, err := l.Launch()
 	if err != nil {
 		return SessionResult{}, err
 	}
