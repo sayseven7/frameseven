@@ -74,6 +74,7 @@ type scanToolOutput struct {
 	ErrorsCount   int                `json:"errors_count" jsonschema:"number of tool errors recorded"`
 	Findings      []findingSummary   `json:"findings" jsonschema:"summarized findings"`
 	Errors        []scanErrorSummary `json:"errors" jsonschema:"tool errors recorded during the scan"`
+	Guidance      string             `json:"guidance" jsonschema:"next-step reminder to study the relevant skill and exploit each finding to maximum permitted depth"`
 }
 
 type findingSummary struct {
@@ -205,6 +206,7 @@ func buildScanToolOutput(toolName string, selected []string, rep report.Report, 
 		ErrorsCount:   len(rep.Errors),
 		Findings:      summarizeFindings(rep.Findings),
 		Errors:        summarizeErrors(rep.Errors),
+		Guidance:      scanGuidance(toolName),
 	}
 }
 

@@ -92,7 +92,7 @@ func RegisterTools(server *mcpsdk.Server) {
 		mcpsdk.AddTool(server, &mcpsdk.Tool{
 			Name:        "frameseven_v1_" + scanTool.Name,
 			Title:       "Run " + scanTool.Name + " Scanner Tool",
-			Description: "Run the Framework v1 " + scanTool.Name + " tool. " + scanTool.Description + ". Pass auth_cookies and/or auth_headers (and optional seed_endpoints) to run authenticated.",
+			Description: "Run the Framework v1 " + scanTool.Name + " tool. " + scanTool.Description + "." + scanToolDirective(scanTool.Name) + " Pass auth_cookies and/or auth_headers (and optional seed_endpoints) to run authenticated.",
 			Annotations: &mcpsdk.ToolAnnotations{
 				DestructiveHint: &destructiveHint,
 			},
