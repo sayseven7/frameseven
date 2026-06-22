@@ -127,7 +127,7 @@ jobs:
         run: mkdir -p bin/frameseven/cli
 
       - name: Build
-        run: go build -o bin/frameseven/cli/${{ matrix.version }} ./cmd/cli/${{ matrix.version }}/main.go
+        run: go build -o bin/frameseven/cli/${{ matrix.version }} ./cmd/cli/${{ matrix.version }}
 
       - name: Check if the binary was created
         run: |
