@@ -36,8 +36,15 @@ For a development build that has not been installed:
 | `-quiet`, `-q` | disabled | Hide banner and progress messages |
 | `-verbose`, `-v` | disabled | Include HTTP request, response, duration, and error debug logs |
 | `-tools` | `default` | Comma-separated Framework v1 tools to run, `default`, or `all` |
+| `-active-scan` | disabled | Enable destructive, state-changing probes (PUT/DELETE methods, IDOR identifier mutation) |
 | `-version` | disabled | Print the installed build version |
 | `-list-tools` | disabled | List all Framework v1 scanner tools |
+
+By default the scan is limited to non-destructive requests. `-active-scan` opts
+in to probes that can change or expose target state: the `misconfig` tool sends
+`PUT`/`DELETE` requests, and the `access` tool mutates numeric identifiers to
+test for IDOR. Only enable it against systems you are authorized to actively
+test. The interactive wizard asks for the same confirmation before scanning.
 
 The target must include the scheme and host:
 

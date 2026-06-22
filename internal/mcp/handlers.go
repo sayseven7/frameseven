@@ -339,6 +339,11 @@ func buildScanConfig(target string, selected []string, timeoutSeconds, toolTimeo
 	cfg.SelectedTools = selected
 	cfg.Logger = log.New(io.Discard, "", 0)
 
+	// Every caller of buildScanConfig has already required active_scan_accepted,
+	// the operator's explicit confirmation to send active probes, so destructive
+	// state-changing checks (dangerous methods, IDOR mutation) are permitted.
+	cfg.ActiveScan = true
+
 	if timeoutSeconds > 0 {
 		cfg.Timeout = time.Duration(timeoutSeconds) * time.Second
 	}

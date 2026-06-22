@@ -43,6 +43,7 @@ func TestRunUnauthAndIDOR(t *testing.T) {
 
 	cfg := config.New(srv.URL)
 	cfg.Timeout = 5 * time.Second
+	cfg.ActiveScan = true
 
 	surface := recon.Surface{
 		Params: []recon.Param{
@@ -85,6 +86,7 @@ func TestRunReportsProtectedAdminCandidate(t *testing.T) {
 
 	cfg := config.New(srv.URL)
 	cfg.Timeout = 5 * time.Second
+	cfg.ActiveScan = true
 
 	findings := Run(&cfg, srv.Client(), &recon.Surface{})
 
@@ -95,6 +97,53 @@ func TestRunReportsProtectedAdminCandidate(t *testing.T) {
 	}
 
 	t.Errorf("expected protected admin candidate finding, got %+v", findings)
+}
+
+func TestRunLoginPageIsNotExposure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/admin" {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprint(w, `<html><body><form><input type="password" name="password"></form></body></html>`)
+			return
+		}
+
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	cfg := config.New(srv.URL)
+	cfg.Timeout = 5 * time.Second
+
+	findings := Run(&cfg, srv.Client(), &recon.Surface{})
+	for _, f := range findings {
+		if f.Severity == finding.High {
+			t.Errorf("login page reported as high-severity exposure: %+v", f)
+		}
+
+		if f.Title == "Administrative interface candidate discovered: /admin" {
+			return
+		}
+	}
+
+	t.Errorf("expected /admin login page to be reported as a candidate, got %+v", findings)
+}
+
+func TestRunSoft404IsNotExposure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A soft-404 catch-all: every unknown path returns the same 200 page.
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, "<html><body>Page not found, please use the menu.</body></html>")
+	}))
+	defer srv.Close()
+
+	cfg := config.New(srv.URL)
+	cfg.Timeout = 5 * time.Second
+
+	for _, f := range Run(&cfg, srv.Client(), &recon.Surface{}) {
+		if f.Severity == finding.High {
+			t.Errorf("soft-404 catch-all reported as exposure: %+v", f)
+		}
+	}
 }
 
 func TestRunChecksCustomAdminPath(t *testing.T) {
@@ -110,6 +159,7 @@ func TestRunChecksCustomAdminPath(t *testing.T) {
 
 	cfg := config.New(srv.URL)
 	cfg.Timeout = 5 * time.Second
+	cfg.ActiveScan = true
 	cfg.CustomPayloads = []string{"hidden-panel"}
 
 	findings := Run(&cfg, srv.Client(), &recon.Surface{})
@@ -133,6 +183,7 @@ func TestPublicContentIsInfoNotHighIDOR(t *testing.T) {
 
 	cfg := config.New(srv.URL)
 	cfg.Timeout = 5 * time.Second
+	cfg.ActiveScan = true
 
 	surface := recon.Surface{
 		Params: []recon.Param{
@@ -165,6 +216,7 @@ func TestRunNoIDORForNonNumeric(t *testing.T) {
 
 	cfg := config.New(srv.URL)
 	cfg.Timeout = 5 * time.Second
+	cfg.ActiveScan = true
 
 	surface := recon.Surface{
 		Params: []recon.Param{
@@ -195,6 +247,7 @@ func TestPathIDORDetectsUserBoundObject(t *testing.T) {
 
 	cfg := config.New(srv.URL)
 	cfg.Timeout = 5 * time.Second
+	cfg.ActiveScan = true
 
 	surface := recon.Surface{
 		Endpoints: []string{srv.URL + "/rest/basket/6"},
@@ -227,6 +280,7 @@ func TestPathIDORPublicContentIsInfo(t *testing.T) {
 
 	cfg := config.New(srv.URL)
 	cfg.Timeout = 5 * time.Second
+	cfg.ActiveScan = true
 
 	surface := recon.Surface{
 		Endpoints: []string{srv.URL + "/rest/products/3"},
@@ -280,6 +334,7 @@ func TestPathIDOROwnedResourceWithoutEmailIsHigh(t *testing.T) {
 
 	cfg := config.New(srv.URL)
 	cfg.Timeout = 5 * time.Second
+	cfg.ActiveScan = true
 
 	surface := recon.Surface{Endpoints: []string{srv.URL + "/rest/basket/6"}}
 
@@ -315,6 +370,7 @@ func TestPathIDOROwnershipEnforcedIsNotFlagged(t *testing.T) {
 
 	cfg := config.New(srv.URL)
 	cfg.Timeout = 5 * time.Second
+	cfg.ActiveScan = true
 
 	surface := recon.Surface{Endpoints: []string{srv.URL + "/rest/basket/6"}}
 
@@ -341,6 +397,7 @@ func TestCollectionIDORProbesOwnedItems(t *testing.T) {
 
 	cfg := config.New(srv.URL)
 	cfg.Timeout = 5 * time.Second
+	cfg.ActiveScan = true
 
 	// Only the collection endpoint is in the surface; item ids are never captured.
 	surface := recon.Surface{Endpoints: []string{srv.URL + "/api/Addresss"}}

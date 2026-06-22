@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sayseven7/frameseven/internal/config"
@@ -15,6 +16,11 @@ import (
 )
 
 var commonPorts = []int{80, 443, 8000, 8080, 8443, 3000}
+
+// probeWorkers caps how many TCP connect attempts run at once. The probes are
+// independent, but the limit stays conservative so the tool does not raise the
+// default scan load.
+const probeWorkers = 6
 
 // Run checks the target port and common web ports with TCP connect attempts.
 func Run(cfg *config.Config, _ *http.Client, _ *recon.Surface) []finding.Finding {
@@ -33,15 +39,47 @@ func Run(cfg *config.Config, _ *http.Client, _ *recon.Surface) []finding.Finding
 		timeout = 500 * time.Millisecond
 	}
 
-	var open []string
-	for _, port := range portsFor(base) {
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(port)), timeout)
-		if err != nil {
-			continue
-		}
+	candidates := portsFor(base)
+	openFlags := make([]bool, len(candidates))
 
-		_ = conn.Close()
-		open = append(open, strconv.Itoa(port))
+	workers := probeWorkers
+	if workers > len(candidates) {
+		workers = len(candidates)
+	}
+
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for index := range jobs {
+				addr := net.JoinHostPort(host, strconv.Itoa(candidates[index]))
+				conn, err := net.DialTimeout("tcp", addr, timeout)
+				if err != nil {
+					continue
+				}
+
+				_ = conn.Close()
+				openFlags[index] = true
+			}
+		}()
+	}
+
+	for index := range candidates {
+		jobs <- index
+	}
+	close(jobs)
+	wg.Wait()
+
+	// Rebuild the open list in candidate order so output stays deterministic.
+	var open []string
+	for index, isOpen := range openFlags {
+		if isOpen {
+			open = append(open, strconv.Itoa(candidates[index]))
+		}
 	}
 
 	if len(open) == 0 {

@@ -111,7 +111,14 @@ func checkMethods(cfg *config.Config, client *http.Client) []finding.Finding {
 	var dangerous []string
 	var dump string
 
-	for _, method := range []string{http.MethodPut, http.MethodDelete, "TRACE"} {
+	// PUT and DELETE can change target state, so they only run when the operator
+	// opts in to an active scan. TRACE is read-only and is always probed.
+	methods := []string{"TRACE"}
+	if cfg.ActiveScan {
+		methods = []string{http.MethodPut, http.MethodDelete, "TRACE"}
+	}
+
+	for _, method := range methods {
 		req, err := http.NewRequest(method, cfg.Target, nil)
 		if err != nil {
 			continue

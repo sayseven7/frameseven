@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/sayseven7/frameseven/internal/config"
+	"github.com/sayseven7/frameseven/internal/finding"
+	"github.com/sayseven7/frameseven/internal/tools/v1/recon"
 )
 
 func TestStats(t *testing.T) {
@@ -39,7 +41,7 @@ func TestFormatStatuses(t *testing.T) {
 	}
 }
 
-func TestRunReportsMissingRateLimit(t *testing.T) {
+func TestRunReportsMissingRateLimitOnSensitiveEndpoint(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -49,10 +51,35 @@ func TestRunReportsMissingRateLimit(t *testing.T) {
 	cfg.Timeout = 5 * time.Second
 	cfg.RateRequests = 5
 
-	findings := Run(&cfg, srv.Client(), nil)
+	surface := &recon.Surface{Endpoints: []string{srv.URL + "/login"}}
+
+	findings := Run(&cfg, srv.Client(), surface)
 
 	if len(findings) != 1 || findings[0].CWE != "CWE-770" {
 		t.Fatalf("expected one missing-rate-limit finding, got %+v", findings)
+	}
+
+	if findings[0].Severity != finding.Medium {
+		t.Errorf("severity = %q, want Medium for a sensitive endpoint", findings[0].Severity)
+	}
+}
+
+func TestRunRootFallbackIsInconclusive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cfg := config.New(srv.URL)
+	cfg.Timeout = 5 * time.Second
+	cfg.RateRequests = 5
+
+	// No sensitive endpoint in the surface, so the burst hits the root and the
+	// result must be downgraded to informational rather than a Medium finding.
+	findings := Run(&cfg, srv.Client(), &recon.Surface{})
+
+	if len(findings) != 1 || findings[0].Severity != finding.Info {
+		t.Fatalf("expected one informational finding, got %+v", findings)
 	}
 }
 

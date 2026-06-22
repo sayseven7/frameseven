@@ -107,6 +107,7 @@ func TestRunWizardUsesDefaults(t *testing.T) {
 		outputDir,
 		"",
 		"",
+		"",
 		"yes",
 	}, "\n")
 
@@ -146,6 +147,10 @@ func TestRunWizardUsesDefaults(t *testing.T) {
 
 	if strings.Join(received.SelectedTools, ",") != "recon,sqli,access,ssrf,lfi,xss,xxe,cmdi,ssti,redirect,authtest,misconfig,ratelimit,cve" {
 		t.Errorf("selected tools = %v", received.SelectedTools)
+	}
+
+	if received.ActiveScan {
+		t.Errorf("active scan = true, want false by default")
 	}
 
 	assertReportFiles(t, outputDir)

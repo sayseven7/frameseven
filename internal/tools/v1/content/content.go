@@ -9,11 +9,17 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/sayseven7/frameseven/internal/config"
 	"github.com/sayseven7/frameseven/internal/finding"
 	"github.com/sayseven7/frameseven/internal/tools/v1/recon"
 )
+
+// probeWorkers caps how many content-path requests run at once. The probes are
+// independent, but the limit stays conservative so the tool does not raise the
+// default scan load.
+const probeWorkers = 8
 
 var paths = []string{
 	"/login",
@@ -41,11 +47,39 @@ func Run(cfg *config.Config, client *http.Client, _ *recon.Surface) []finding.Fi
 
 	soft404 := get(cfg, client, resolve(base, "/frameseven-content-probe-404"))
 
+	candidates := allPaths(cfg)
+	responses := make([]*response, len(candidates))
+
+	workers := probeWorkers
+	if workers > len(candidates) {
+		workers = len(candidates)
+	}
+
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for index := range jobs {
+				responses[index] = get(cfg, client, resolve(base, candidates[index]))
+			}
+		}()
+	}
+
+	for index := range candidates {
+		jobs <- index
+	}
+	close(jobs)
+	wg.Wait()
+
+	// Walk responses in path order so reported findings stay deterministic.
 	var found []string
 	var first *response
 
-	for _, path := range allPaths(cfg) {
-		resp := get(cfg, client, resolve(base, path))
+	for index, resp := range responses {
 		if resp == nil || resp.status < 200 || resp.status >= 400 {
 			continue
 		}
@@ -54,7 +88,7 @@ func Run(cfg *config.Config, client *http.Client, _ *recon.Surface) []finding.Fi
 			continue
 		}
 
-		found = append(found, path+" ("+strconv.Itoa(resp.status)+")")
+		found = append(found, candidates[index]+" ("+strconv.Itoa(resp.status)+")")
 		if first == nil {
 			first = resp
 		}

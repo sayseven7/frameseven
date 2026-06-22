@@ -31,6 +31,11 @@ type Config struct {
 	// RateRequests is how many requests the rate-limit tool sends.
 	RateRequests int
 
+	// ActiveScan opts in to destructive, state-changing probes. When false
+	// (the default) tools stay limited to non-destructive requests: dangerous
+	// HTTP methods (PUT, DELETE) and IDOR identifier mutation are skipped.
+	ActiveScan bool
+
 	// NVDAPIKey is optional. When set it is sent to the NVD API to raise the
 	// request rate limit.
 	NVDAPIKey string

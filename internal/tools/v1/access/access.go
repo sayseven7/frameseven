@@ -60,9 +60,15 @@ func Run(cfg *config.Config, client *http.Client, surface *recon.Surface) []find
 	var findings []finding.Finding
 
 	findings = append(findings, unauthEndpoints(cfg, client, base)...)
-	findings = append(findings, idor(cfg, client, surface)...)
-	findings = append(findings, pathIDOR(cfg, client, surface)...)
-	findings = append(findings, collectionIDOR(cfg, client, surface)...)
+
+	// IDOR probing mutates numeric identifiers and can reach data belonging to
+	// other users, so it is treated as an active technique and only runs when
+	// the operator opts in to an active scan.
+	if cfg.ActiveScan {
+		findings = append(findings, idor(cfg, client, surface)...)
+		findings = append(findings, pathIDOR(cfg, client, surface)...)
+		findings = append(findings, collectionIDOR(cfg, client, surface)...)
+	}
 
 	return findings
 }
@@ -72,6 +78,13 @@ func unauthEndpoints(cfg *config.Config, client *http.Client, base *url.URL) []f
 	reported := map[string]bool{}
 
 	root := get(cfg, client, base.String())
+
+	// Probe a path that should not exist so soft-404 pages (a 200 catch-all for
+	// unknown routes) can be told apart from a genuinely reachable endpoint.
+	var control *response
+	if ref, err := base.Parse("/frameseven-access-probe-404"); err == nil {
+		control = get(cfg, client, ref.String())
+	}
 
 	for _, path := range allAdminPaths(cfg) {
 		ref, err := base.Parse(path)
@@ -93,7 +106,17 @@ func unauthEndpoints(cfg *config.Config, client *http.Client, base *url.URL) []f
 
 		switch resp.status {
 		case http.StatusOK:
-			if isSPAIndex(resp, root) {
+			// A 200 alone is not exposure: SPA shells, soft-404 catch-alls, and
+			// login pages all answer 200. Each of these means the endpoint is not
+			// actually serving protected data without authentication.
+			if isSPAIndex(resp, root) || looksSoft404(resp, control) {
+				continue
+			}
+
+			if looksLogin(resp) {
+				findings = append(findings, adminCandidate(path, resp,
+					"An administrative path returned a login page, so it is gated by authentication."))
+
 				continue
 			}
 
@@ -116,23 +139,8 @@ func unauthEndpoints(cfg *config.Config, client *http.Client, base *url.URL) []f
 				},
 			})
 		case http.StatusUnauthorized, http.StatusForbidden:
-			findings = append(findings, finding.Finding{
-				Title:       "Administrative interface candidate discovered: " + path,
-				Module:      "access",
-				Severity:    finding.Info,
-				OWASP:       "A01:2025 - Broken Access Control",
-				CWE:         "CWE-200",
-				Description: "An administrative path exists and returned an authentication or authorization response.",
-				Evidence: finding.Evidence{
-					Request:   resp.dump,
-					Response:  trim(resp.body, 400),
-					Extracted: path + " (" + strconv.Itoa(resp.status) + ")",
-				},
-				NextSteps: []string{
-					"Confirm this interface is intentionally exposed.",
-					"Keep authorization checks server-side and monitor access attempts.",
-				},
-			})
+			findings = append(findings, adminCandidate(path, resp,
+				"An administrative path exists and returned an authentication or authorization response."))
 		}
 	}
 
@@ -193,6 +201,68 @@ func isSPAIndex(resp, root *response) bool {
 	}
 
 	return false
+}
+
+// loginSignatures are markers that an HTML body is a login/sign-in page. Their
+// presence on an admin path means the endpoint is gated by authentication, not
+// exposed, so a 200 must not be reported as an unauthenticated exposure.
+var loginSignatures = []string{
+	"type=\"password\"", "type='password'", "name=\"password\"", "name='password'",
+	"id=\"password\"", "login-form", "loginform", "sign in", "sign-in", "log in",
+	"please log in", "please sign in", "csrf",
+}
+
+// looksLogin reports whether an HTML response is a login or sign-in page.
+func looksLogin(resp *response) bool {
+	if resp == nil || !strings.Contains(strings.ToLower(resp.contentType), "text/html") {
+		return false
+	}
+
+	lower := strings.ToLower(resp.body)
+	for _, sig := range loginSignatures {
+		if strings.Contains(lower, sig) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// looksSoft404 reports whether a 200 response is the target's catch-all page for
+// unknown paths, judged against a control probe of a path that should not exist.
+func looksSoft404(resp, control *response) bool {
+	if resp == nil || control == nil || control.status != http.StatusOK {
+		return false
+	}
+
+	if resp.status != http.StatusOK {
+		return false
+	}
+
+	return resp.body == control.body || comparableSize(resp.body, control.body)
+}
+
+// adminCandidate builds the informational finding for an administrative path
+// that exists but is gated (a 401/403 response or a 200 login page) rather than
+// exposed.
+func adminCandidate(path string, resp *response, description string) finding.Finding {
+	return finding.Finding{
+		Title:       "Administrative interface candidate discovered: " + path,
+		Module:      "access",
+		Severity:    finding.Info,
+		OWASP:       "A01:2025 - Broken Access Control",
+		CWE:         "CWE-200",
+		Description: description,
+		Evidence: finding.Evidence{
+			Request:   resp.dump,
+			Response:  trim(resp.body, 400),
+			Extracted: path + " (" + strconv.Itoa(resp.status) + ")",
+		},
+		NextSteps: []string{
+			"Confirm this interface is intentionally exposed.",
+			"Keep authorization checks server-side and monitor access attempts.",
+		},
+	}
 }
 
 // sizeWithin reports whether two bodies are the same size within the tolerance.
