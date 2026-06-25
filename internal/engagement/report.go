@@ -9,12 +9,17 @@ import (
 )
 
 // BuildReport assembles a consolidated, triaged report from the engagement
-// store. False positives are excluded from the findings body and listed in an
+// store. By default, only findings with status=confirmed AND confidence >= 0.6
+// are included in the body; needs_review and low-confidence findings go to a
+// separate appendix. Pass includeUnverified=true to include everything.
+//
+// False positives are always excluded from the findings body and listed in an
 // appendix instead; every finding uses its effective severity, so a manual
 // override prevails over the scanner severity. Extracted data is collected into
 // its own section and, when present, the report is flagged confidential.
-func (e *Engagement) BuildReport() report.Report {
+func (e *Engagement) BuildReport(includeUnverified bool) report.Report {
 	var findings []finding.Finding
+	var unverified []report.UnverifiedItem
 	var extracted []report.ExtractedItem
 	var falsePositives []report.FalsePositiveItem
 
@@ -25,6 +30,22 @@ func (e *Engagement) BuildReport() report.Report {
 				Module:   item.Tool,
 				Endpoint: item.Endpoint,
 				Reason:   firstNonEmpty(item.TriageReason, "marked as false positive"),
+			})
+
+			continue
+		}
+
+		// Only confirmed AND high-confidence findings make the main body.
+		passesGate := item.Status == StatusConfirmed && item.Confidence >= DefaultConfidenceConfirmed
+
+		if !passesGate && !includeUnverified {
+			unverified = append(unverified, report.UnverifiedItem{
+				Title:      item.Title,
+				Module:     item.Tool,
+				Severity:   string(item.SeverityEffective),
+				Status:     string(item.Status),
+				Confidence: item.Confidence,
+				Endpoint:   item.Endpoint,
 			})
 
 			continue
@@ -52,6 +73,7 @@ func (e *Engagement) BuildReport() report.Report {
 	rep.EngagementID = e.Meta.ID
 	rep.ExtractedData = extracted
 	rep.FalsePositives = falsePositives
+	rep.Unverified = unverified
 	rep.Confidential = len(extracted) > 0
 
 	return rep

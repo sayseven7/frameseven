@@ -329,6 +329,7 @@ footer { margin-top: 48px; color: var(--subtle); font-size: 12px; text-align: ce
     {{if .ExtractedData}}<a class="nav-link" href="#extracted"><span>Sensitive data</span><span class="count">{{len .ExtractedData}}</span></a>{{end}}
     {{if .Errors}}<a class="nav-link" href="#errors"><span>Scan errors</span><span class="count">{{len .Errors}}</span></a>{{end}}
     <a class="nav-link" href="#findings"><span>Findings</span><span class="count">{{len .Findings}}</span></a>
+    {{if .Unverified}}<a class="nav-link" href="#unverified"><span>Unverified</span><span class="count">{{len .Unverified}}</span></a>{{end}}
     {{if .FalsePositives}}<a class="nav-link" href="#false-positives"><span>Discarded FPs</span><span class="count">{{len .FalsePositives}}</span></a>{{end}}
     {{if .Findings}}
     <div class="nav-label">Finding index</div>
@@ -490,6 +491,17 @@ footer { margin-top: 48px; color: var(--subtle); font-size: 12px; text-align: ce
     <div class="panel no-findings">No findings were recorded during this scan.</div>
     {{end}}
   </section>
+
+  {{if .Unverified}}
+  <section class="section" id="unverified">
+    <div class="section-heading">
+      <div><h2>Appendix: unverified findings</h2><p>Findings held back from the body: not confirmed or below the confidence threshold.</p></div>
+    </div>
+    <div class="panel"><div class="panel-body"><ul class="data-list">
+      {{range .Unverified}}<li><strong>{{.Title}}</strong>{{if .Module}} <span class="muted">{{.Module}}</span>{{end}}<br><span class="muted">severity {{.Severity}} · status {{.Status}} · confidence {{printf "%.2f" .Confidence}}</span>{{if .Endpoint}}<br><code>{{.Endpoint}}</code>{{end}}</li>{{end}}
+    </ul></div></div>
+  </section>
+  {{end}}
 
   {{if .FalsePositives}}
   <section class="section" id="false-positives">

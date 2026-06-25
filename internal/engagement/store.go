@@ -99,9 +99,11 @@ func LoadByID(baseDir, id string) (*Engagement, error) {
 
 // AddScanFindings converts and appends scanner findings to the store. Findings
 // that already exist (same signature) are not duplicated; their occurrence
-// counter is incremented instead. It returns the ids of newly stored findings.
+// counter is incremented instead. It returns all resulting finding ids (newly
+// stored plus updated via merge). Scanner findings are born with confidence 0.0
+// and are elevated later by the anti-false-positive verifiers.
 func (e *Engagement) AddScanFindings(tool string, scanFindings []finding.Finding) ([]string, error) {
-	var added []string
+	var ids []string
 
 	for _, sf := range scanFindings {
 		item := Finding{
@@ -120,8 +122,8 @@ func (e *Engagement) AddScanFindings(tool string, scanFindings []finding.Finding
 			Status:            StatusNew,
 		}
 
-		if id, ok := e.upsert(item); ok {
-			added = append(added, id)
+		if id, _ := e.upsert(item); id != "" {
+			ids = append(ids, id)
 		}
 	}
 
@@ -129,7 +131,7 @@ func (e *Engagement) AddScanFindings(tool string, scanFindings []finding.Finding
 		return nil, err
 	}
 
-	return added, nil
+	return ids, nil
 }
 
 // Add stores a single finding (typically manual) and returns its id. Like
@@ -149,6 +151,16 @@ func (e *Engagement) Add(item Finding) (string, error) {
 
 	if item.Status == "" {
 		item.Status = StatusNew
+	}
+
+	// Default confidence based on status
+	if item.Confidence == 0 {
+		switch item.Status {
+		case StatusConfirmed:
+			item.Confidence = DefaultConfidenceConfirmed
+		case StatusNeedsReview:
+			item.Confidence = DefaultConfidenceNeedsReview
+		}
 	}
 
 	id, _ := e.upsert(item)

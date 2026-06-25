@@ -48,7 +48,7 @@ func TestBuildReportIncludesExtractedDataAndExcludesFalsePositives(t *testing.T)
 		t.Fatalf("Add: %v", err)
 	}
 
-	rep := eng.BuildReport()
+	rep := eng.BuildReport(true)
 
 	if !rep.Confidential {
 		t.Fatalf("report should be confidential when extracted data is present")
@@ -99,7 +99,7 @@ func TestBuildReportRendersToAllFormats(t *testing.T) {
 		t.Fatalf("Add: %v", err)
 	}
 
-	rep := eng.BuildReport()
+	rep := eng.BuildReport(false)
 
 	text := report.RenderText(rep)
 	for _, want := range []string{"CONFIDENTIAL", "sensitive data extracted", "users table: 12 rows dumped"} {
@@ -131,6 +131,57 @@ func TestBuildReportRendersToAllFormats(t *testing.T) {
 	}
 }
 
+func TestBuildReport_FiltersUnverified(t *testing.T) {
+	dir := t.TempDir()
+
+	eng, err := Open(dir, "https://example.com")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	// Confirmed manual finding gets default confidence 0.6 and passes the gate.
+	_, err = eng.Add(Finding{
+		Title:             "Confirmed SQL injection",
+		Tool:              "sqli",
+		SeverityEffective: finding.High,
+		Status:            StatusConfirmed,
+	})
+	if err != nil {
+		t.Fatalf("Add confirmed: %v", err)
+	}
+
+	// Needs-review finding gets default confidence 0.3 and is held back.
+	_, err = eng.Add(Finding{
+		Title:             "Possible open redirect",
+		Tool:              "redirect",
+		SeverityEffective: finding.Medium,
+		Status:            StatusNeedsReview,
+	})
+	if err != nil {
+		t.Fatalf("Add needs_review: %v", err)
+	}
+
+	rep := eng.BuildReport(false)
+
+	if len(rep.Findings) != 1 || rep.Findings[0].Title != "Confirmed SQL injection" {
+		t.Fatalf("expected only the confirmed finding in body, got %+v", rep.Findings)
+	}
+
+	if len(rep.Unverified) != 1 || rep.Unverified[0].Title != "Possible open redirect" {
+		t.Fatalf("expected the needs_review finding in unverified, got %+v", rep.Unverified)
+	}
+
+	full := eng.BuildReport(true)
+
+	if len(full.Findings) != 2 {
+		t.Fatalf("expected all findings in body with includeUnverified, got %d", len(full.Findings))
+	}
+
+	if len(full.Unverified) != 0 {
+		t.Fatalf("expected no unverified items with includeUnverified, got %d", len(full.Unverified))
+	}
+}
+
 func TestBuildReportUsesPersistedSurface(t *testing.T) {
 	dir := t.TempDir()
 
@@ -151,7 +202,7 @@ func TestBuildReportUsesPersistedSurface(t *testing.T) {
 		t.Fatalf("SetSurface: %v", err)
 	}
 
-	rep := eng.BuildReport()
+	rep := eng.BuildReport(false)
 
 	if len(rep.Surface.Technologies) == 0 {
 		t.Errorf("report surface technologies are empty")

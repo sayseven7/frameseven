@@ -79,6 +79,16 @@ func RegisterTools(server *mcpsdk.Server) {
 	}, V1Triage)
 
 	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "frameseven_v1_finding_list",
+		Title:       "List Engagement Findings",
+		Description: "List findings stored in an engagement with optional filters by status, tool, and minimum confidence. Returns finding IDs that can be used with finding_update or triage.",
+		Annotations: &mcpsdk.ToolAnnotations{
+			ReadOnlyHint:   readOnlyHint,
+			IdempotentHint: idempotentHint,
+		},
+	}, V1FindingList)
+
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "frameseven_v1_report_engagement",
 		Title:       "Render Engagement Report",
 		Description: "Render the consolidated, triaged engagement report as text, Markdown, HTML, PDF, or all formats. False positives are excluded from the body and listed in an appendix; extracted data gets its own section.",

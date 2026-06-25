@@ -201,9 +201,12 @@ func V1FindingUpdate(ctx context.Context, req *mcpsdk.CallToolRequest, input fin
 }
 
 type triageOverrideInput struct {
-	FindingID string `json:"finding_id" jsonschema:"id of the finding to triage"`
-	Status    string `json:"status" jsonschema:"triage status: confirmed, false_positive, or needs_review"`
-	Reason    string `json:"reason" jsonschema:"justification for the decision"`
+	FindingID    string `json:"finding_id,omitempty" jsonschema:"specific finding id to override"`
+	ByTool       string `json:"by_tool,omitempty" jsonschema:"select all findings produced by this tool (e.g. 'access', 'lfi')"`
+	ByEndpoint   string `json:"by_endpoint,omitempty" jsonschema:"select all findings on this endpoint"`
+	ByTitleRegex string `json:"by_title_regex,omitempty" jsonschema:"select all findings whose title matches this regex"`
+	Status       string `json:"status" jsonschema:"new, confirmed, false_positive, or needs_review"`
+	Reason       string `json:"reason,omitempty" jsonschema:"human-readable triage reason"`
 }
 
 type triageInput struct {
@@ -237,9 +240,12 @@ func V1Triage(ctx context.Context, req *mcpsdk.CallToolRequest, input triageInpu
 		}
 
 		overrides = append(overrides, engagement.Override{
-			FindingID: override.FindingID,
-			Status:    status,
-			Reason:    override.Reason,
+			FindingID:    override.FindingID,
+			ByTool:       override.ByTool,
+			ByEndpoint:   override.ByEndpoint,
+			ByTitleRegex: override.ByTitleRegex,
+			Status:       status,
+			Reason:       override.Reason,
 		})
 	}
 
@@ -259,9 +265,77 @@ func V1Triage(ctx context.Context, req *mcpsdk.CallToolRequest, input triageInpu
 	}, nil
 }
 
+type findingListInput struct {
+	EngagementID  string  `json:"engagement_id" jsonschema:"engagement store id"`
+	Status        string  `json:"status,omitempty" jsonschema:"optional filter: new, confirmed, false_positive, needs_review"`
+	Tool          string  `json:"tool,omitempty" jsonschema:"optional filter by source tool name"`
+	MinConfidence float64 `json:"min_confidence,omitempty" jsonschema:"optional minimum confidence (0..1)"`
+}
+
+type findingListItem struct {
+	ID         string  `json:"id"`
+	Title      string  `json:"title"`
+	Tool       string  `json:"tool"`
+	Severity   string  `json:"severity"`
+	Status     string  `json:"status"`
+	Confidence float64 `json:"confidence"`
+	Endpoint   string  `json:"endpoint,omitempty"`
+	Source     string  `json:"source"`
+}
+
+type findingListOutput struct {
+	EngagementID string            `json:"engagement_id"`
+	Total        int               `json:"total"`
+	Findings     []findingListItem `json:"findings"`
+}
+
+// V1FindingList lists findings stored in an engagement with optional filtering.
+func V1FindingList(ctx context.Context, req *mcpsdk.CallToolRequest, input findingListInput) (*mcpsdk.CallToolResult, findingListOutput, error) {
+	eng, err := engagement.LoadByID(engagementsBaseDir(), input.EngagementID)
+	if err != nil {
+		return nil, findingListOutput{}, err
+	}
+
+	var out findingListOutput
+	out.EngagementID = eng.Meta.ID
+
+	statusFilter := strings.TrimSpace(strings.ToLower(input.Status))
+	toolFilter := strings.TrimSpace(strings.ToLower(input.Tool))
+
+	for _, item := range eng.Findings {
+		if statusFilter != "" && strings.ToLower(string(item.Status)) != statusFilter {
+			continue
+		}
+
+		if toolFilter != "" && strings.ToLower(item.Tool) != toolFilter {
+			continue
+		}
+
+		if input.MinConfidence > 0 && item.Confidence < input.MinConfidence {
+			continue
+		}
+
+		out.Findings = append(out.Findings, findingListItem{
+			ID:         item.ID,
+			Title:      item.Title,
+			Tool:       item.Tool,
+			Severity:   string(item.SeverityEffective),
+			Status:     string(item.Status),
+			Confidence: item.Confidence,
+			Endpoint:   item.Endpoint,
+			Source:     string(item.Source),
+		})
+	}
+
+	out.Total = len(out.Findings)
+
+	return nil, out, nil
+}
+
 type reportEngagementInput struct {
-	EngagementID string `json:"engagement_id" jsonschema:"engagement store id"`
-	Format       string `json:"format" jsonschema:"report format: text, markdown, html, pdf, both, or all; defaults to text"`
+	EngagementID      string `json:"engagement_id" jsonschema:"engagement store id"`
+	Format            string `json:"format" jsonschema:"report format: text, markdown, html, pdf, both, or all; defaults to text"`
+	IncludeUnverified bool   `json:"include_unverified,omitempty" jsonschema:"include needs_review and low-confidence findings in the main body (default false)"`
 }
 
 // V1ReportEngagement renders the consolidated, triaged engagement report.
@@ -276,7 +350,7 @@ func V1ReportEngagement(ctx context.Context, req *mcpsdk.CallToolRequest, input 
 		return nil, reportToolOutput{}, err
 	}
 
-	rep := eng.BuildReport()
+	rep := eng.BuildReport(input.IncludeUnverified)
 
 	out, err := buildReportToolOutput(nil, format, rep, false)
 	if err != nil {

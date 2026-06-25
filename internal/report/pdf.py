@@ -141,6 +141,7 @@ class SecurityReportPDF(FPDF):
         self.attack_surface()
         self.extracted_data_section()
         self.security_findings()
+        self.unverified_section()
         self.false_positives_section()
 
     # ------------------------------------------------------------------
@@ -607,6 +608,44 @@ class SecurityReportPDF(FPDF):
             self.multi_cell(0, 5, clean(title), new_x="LMARGIN", new_y="NEXT")
 
             self.code_block("Extracted data", item.get("data", ""), max_lines=120)
+
+    def unverified_section(self):
+        items = list_value(self.report.get("unverified"))
+        if not items:
+            return
+
+        self.section_heading(
+            "Appendix: unverified findings",
+            "Findings held back from the body: not confirmed or below the confidence threshold.",
+        )
+
+        for item in items:
+            self.ensure_space(10)
+
+            title = item.get("title", "")
+            module = item.get("module", "")
+            severity = item.get("severity", "")
+            status = item.get("status", "")
+            confidence = item.get("confidence", 0)
+
+            self.set_x(self.l_margin)
+            self.set_font("Helvetica", "B", 9)
+            self.set_text_color(*TEXT)
+
+            head = title
+            if module:
+                head = f"{head}  [{module}]"
+
+            self.multi_cell(0, 4.6, clean(head), new_x="LMARGIN", new_y="NEXT")
+
+            detail = f"severity {severity} - status {status} - confidence {confidence:.2f}"
+
+            self.set_x(self.l_margin)
+            self.set_font("Helvetica", size=8)
+            self.set_text_color(*MUTED)
+            self.multi_cell(0, 4, clean(detail), new_x="LMARGIN", new_y="NEXT")
+
+            self.ln(1.5)
 
     def false_positives_section(self):
         items = list_value(self.report.get("false_positives"))

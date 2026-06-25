@@ -73,6 +73,92 @@ func TestAddScanFindingsDeduplicates(t *testing.T) {
 	}
 }
 
+func TestAddScanFindingsReturnsIDs(t *testing.T) {
+	dir := t.TempDir()
+
+	eng, err := Open(dir, "https://example.com")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	scanFindings := []finding.Finding{
+		{Title: "SQL injection", Module: "sqli", Severity: finding.Medium, Evidence: finding.Evidence{Response: "suspicious"}},
+	}
+
+	ids, err := eng.AddScanFindings("sqli", scanFindings)
+	if err != nil {
+		t.Fatalf("AddScanFindings: %v", err)
+	}
+
+	if len(ids) != 1 || ids[0] == "" {
+		t.Fatalf("expected one non-empty id on insert, got %v", ids)
+	}
+
+	// A merged (deduplicated) finding must still return its id.
+	ids, err = eng.AddScanFindings("sqli", scanFindings)
+	if err != nil {
+		t.Fatalf("AddScanFindings second: %v", err)
+	}
+
+	if len(ids) != 1 || ids[0] == "" {
+		t.Fatalf("expected one non-empty id on merge, got %v", ids)
+	}
+}
+
+func TestConfidenceDefaultsApplied(t *testing.T) {
+	dir := t.TempDir()
+
+	eng, err := Open(dir, "https://example.com")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	confirmedID, err := eng.Add(Finding{
+		Title:             "Confirmed manual finding",
+		Tool:              "manual",
+		SeverityEffective: finding.High,
+		Status:            StatusConfirmed,
+	})
+	if err != nil {
+		t.Fatalf("Add confirmed: %v", err)
+	}
+
+	reviewID, err := eng.Add(Finding{
+		Title:             "Needs review manual finding",
+		Tool:              "manual",
+		SeverityEffective: finding.Medium,
+		Status:            StatusNeedsReview,
+	})
+	if err != nil {
+		t.Fatalf("Add needs_review: %v", err)
+	}
+
+	newID, err := eng.Add(Finding{
+		Title:             "New manual finding",
+		Tool:              "manual",
+		SeverityEffective: finding.Low,
+		Status:            StatusNew,
+	})
+	if err != nil {
+		t.Fatalf("Add new: %v", err)
+	}
+
+	confirmed, _ := eng.Find(confirmedID)
+	if confirmed.Confidence != DefaultConfidenceConfirmed {
+		t.Errorf("confirmed confidence = %v, want %v", confirmed.Confidence, DefaultConfidenceConfirmed)
+	}
+
+	review, _ := eng.Find(reviewID)
+	if review.Confidence != DefaultConfidenceNeedsReview {
+		t.Errorf("needs_review confidence = %v, want %v", review.Confidence, DefaultConfidenceNeedsReview)
+	}
+
+	newFinding, _ := eng.Find(newID)
+	if newFinding.Confidence != 0 {
+		t.Errorf("new confidence = %v, want 0", newFinding.Confidence)
+	}
+}
+
 func TestManualOverrideKeepsScannerEvidenceAndRaisesSeverity(t *testing.T) {
 	dir := t.TempDir()
 

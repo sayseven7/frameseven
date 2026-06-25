@@ -34,6 +34,11 @@ const (
 	StatusNeedsReview   Status = "needs_review"
 )
 
+const (
+	DefaultConfidenceConfirmed   = 0.6 // floor for status=confirmed
+	DefaultConfidenceNeedsReview = 0.3 // typical for needs_review
+)
+
 // Meta is the engagement header persisted in meta.json.
 type Meta struct {
 	ID        string        `json:"id"`
@@ -89,6 +94,12 @@ type Finding struct {
 	References  []string `json:"references,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	Occurrences int      `json:"occurrences"`
+
+	// Confidence is a 0..1 score of how well-verified the finding is.
+	// 1.0 = strong proof (OOB callback, extracted data, manual confirmation).
+	// 0.6 = default for confirmed findings without extra verification signals.
+	// 0.0 = unverified hypothesis.
+	Confidence float64 `json:"confidence"`
 }
 
 // signature is the dedupe key for a finding: same tool, title, endpoint, and

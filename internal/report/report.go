@@ -30,6 +30,19 @@ type Report struct {
 	Confidential   bool                `json:"confidential,omitempty"`
 	ExtractedData  []ExtractedItem     `json:"extracted_data,omitempty"`
 	FalsePositives []FalsePositiveItem `json:"false_positives,omitempty"`
+	Unverified     []UnverifiedItem    `json:"unverified,omitempty"`
+}
+
+// UnverifiedItem is a finding filtered out of the main report body because it is
+// not confirmed or its confidence is below the reporting threshold. It is listed
+// in an appendix so the reader sees what was held back for review.
+type UnverifiedItem struct {
+	Title      string  `json:"title"`
+	Module     string  `json:"module"`
+	Severity   string  `json:"severity"`
+	Status     string  `json:"status"`
+	Confidence float64 `json:"confidence"`
+	Endpoint   string  `json:"endpoint,omitempty"`
 }
 
 // ExtractedItem is one piece of sensitive data pulled out during the
