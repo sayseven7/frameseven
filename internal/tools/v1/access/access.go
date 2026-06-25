@@ -15,6 +15,7 @@ import (
 	"github.com/sayseven7/frameseven/internal/config"
 	"github.com/sayseven7/frameseven/internal/finding"
 	"github.com/sayseven7/frameseven/internal/tools/v1/recon"
+	"github.com/sayseven7/frameseven/internal/verify"
 )
 
 // spaSignatures mark an HTML body as a single-page-app shell, the generic 200
@@ -59,7 +60,7 @@ func Run(cfg *config.Config, client *http.Client, surface *recon.Surface) []find
 
 	var findings []finding.Finding
 
-	findings = append(findings, unauthEndpoints(cfg, client, base)...)
+	findings = append(findings, unauthEndpoints(cfg, client, base, surface)...)
 
 	// IDOR probing mutates numeric identifiers and can reach data belonging to
 	// other users, so it is treated as an active technique and only runs when
@@ -73,7 +74,7 @@ func Run(cfg *config.Config, client *http.Client, surface *recon.Surface) []find
 	return findings
 }
 
-func unauthEndpoints(cfg *config.Config, client *http.Client, base *url.URL) []finding.Finding {
+func unauthEndpoints(cfg *config.Config, client *http.Client, base *url.URL, surface *recon.Surface) []finding.Finding {
 	var findings []finding.Finding
 	reported := map[string]bool{}
 
@@ -109,6 +110,10 @@ func unauthEndpoints(cfg *config.Config, client *http.Client, base *url.URL) []f
 			// A 200 alone is not exposure: SPA shells, soft-404 catch-alls, and
 			// login pages all answer 200. Each of these means the endpoint is not
 			// actually serving protected data without authentication.
+			if verify.MatchesBaseline(surface.Baseline, resp.status, resp.contentType, []byte(resp.body)) {
+				continue // catch-all, not an exposed endpoint
+			}
+
 			if isSPAIndex(resp, root) || looksSoft404(resp, control) {
 				continue
 			}
@@ -313,6 +318,11 @@ func idor(cfg *config.Config, client *http.Client, surface *recon.Surface) []fin
 	tested := map[string]bool{}
 
 	for _, p := range surface.Params {
+		// Cache-busting / resize / versioning params are not object references.
+		if verify.IsStaticAssetParam(p.Name) {
+			continue
+		}
+
 		u, err := url.Parse(p.Endpoint)
 		if err != nil {
 			continue
@@ -346,6 +356,11 @@ func probeIDOR(cfg *config.Config, client *http.Client, p recon.Param, value str
 		return finding.Finding{}, false
 	}
 
+	// Authorization checks on static assets (CSS/JS/images) are noise.
+	if verify.IsStaticAssetResponse(base.contentType, p.Endpoint) {
+		return finding.Finding{}, false
+	}
+
 	resource := resourceFromParam(p)
 
 	for _, delta := range []int{1, -1, 2} {
@@ -355,6 +370,16 @@ func probeIDOR(cfg *config.Config, client *http.Client, p recon.Param, value str
 		}
 
 		resp := getParam(cfg, client, p, strconv.Itoa(neighbor))
+		if resp == nil {
+			continue
+		}
+
+		// Require a real delta between the two ids: identical responses for
+		// different ids are cache-busting/resize behavior, not an IDOR.
+		diff := verify.CompareResponses(base.status, []byte(base.body), resp.status, []byte(resp.body))
+		if !diff.HasDelta {
+			continue
+		}
 
 		severity, marker, ok := classifyNeighbor(resource, base, resp)
 		if !ok {
@@ -619,11 +644,12 @@ func enumerateIDs(fetch func(id int) *response) string {
 // buildIDOR assembles an access-control finding for a confirmed object reference.
 func buildIDOR(severity finding.Severity, title, extracted, marker string, resp *response) finding.Finding {
 	f := finding.Finding{
-		Title:    title,
-		Module:   "access",
-		Severity: severity,
-		OWASP:    "A01:2025 - Broken Access Control",
-		CWE:      "CWE-639",
+		Title:      title,
+		Module:     "access",
+		Severity:   severity,
+		OWASP:      "A01:2025 - Broken Access Control",
+		CWE:        "CWE-639",
+		Confidence: 0.7,
 		Evidence: finding.Evidence{
 			Request:   resp.dump,
 			Response:  trim(resp.body, 400),

@@ -15,6 +15,7 @@ import (
 
 	"github.com/sayseven7/frameseven/internal/config"
 	"github.com/sayseven7/frameseven/internal/finding"
+	"github.com/sayseven7/frameseven/internal/verify"
 )
 
 // Param is a single input point discovered on the target.
@@ -50,6 +51,7 @@ type Surface struct {
 	Endpoints      []string          `json:"endpoints"`
 	Params         []Param           `json:"params"`
 	SensitiveFiles []string          `json:"sensitive_files"`
+	Baseline       verify.Baseline   `json:"baseline,omitempty"`
 }
 
 // sensitiveFiles maps a probe path to a signature that must appear in the
@@ -84,6 +86,10 @@ func Run(cfg *config.Config, client *http.Client, surface *Surface) []finding.Fi
 
 	surface.Host = base.Hostname()
 	surface.DNS = resolveDNS(base.Hostname())
+
+	if baseline, isCatchAll := verify.CalibrateBaseline(client, base); isCatchAll {
+		surface.Baseline = baseline
+	}
 
 	dump, body, resp := fetch(cfg, client, http.MethodGet, cfg.Target)
 	if resp == nil {
@@ -358,6 +364,20 @@ func probeSensitiveFiles(cfg *config.Config, client *http.Client, base *url.URL,
 			continue
 		}
 
+		bodyBytes := []byte(body)
+
+		// Skip if the response matches the catch-all baseline (the host returns
+		// homepage HTML for any path including this one).
+		if verify.MatchesBaseline(surface.Baseline, resp.StatusCode, resp.Header.Get("Content-Type"), bodyBytes) {
+			continue
+		}
+
+		// Validate shape: a .env that returns HTML is not an .env.
+		kind := shapeKindForPath(path)
+		if kind != "" && !verify.ShapeOf(kind, resp.Header.Get("Content-Type"), bodyBytes) {
+			continue
+		}
+
 		surface.SensitiveFiles = append(surface.SensitiveFiles, path)
 
 		if path == "/robots.txt" {
@@ -381,10 +401,32 @@ func probeSensitiveFiles(cfg *config.Config, client *http.Client, base *url.URL,
 				"Remove the file from the web root or block it at the server level.",
 				"Review the file for leaked secrets, source code, or configuration.",
 			},
+			Confidence: 0.8,
 		})
 	}
 
 	return findings
+}
+
+// shapeKindForPath maps a sensitive-file probe path to the file kind expected
+// by verify.ShapeOf, so a response can be checked against the format that the
+// real file would have. An empty string means no shape check applies.
+func shapeKindForPath(path string) string {
+	p := strings.ToLower(path)
+	switch {
+	case strings.HasSuffix(p, "/.env"):
+		return "env"
+	case strings.Contains(p, ".git/config"):
+		return "git_config"
+	case strings.HasSuffix(p, "/.htaccess"):
+		return "htaccess"
+	case strings.HasSuffix(p, "/.ds_store"):
+		return "ds_store"
+	case strings.HasSuffix(p, "/robots.txt"):
+		return "robots"
+	}
+
+	return ""
 }
 
 // fileContent renders the downloaded sensitive file with its content type, size,

@@ -51,6 +51,7 @@ type Finding struct {
 	Description string   `json:"description"`
 	Evidence    Evidence `json:"evidence,omitempty"`
 	NextSteps   []string `json:"next_steps,omitempty"`
+	Confidence  float64  `json:"confidence,omitempty"`
 }
 
 // SortBySeverity orders findings from most to least severe in place. Findings

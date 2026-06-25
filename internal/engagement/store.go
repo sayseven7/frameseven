@@ -119,6 +119,7 @@ func (e *Engagement) AddScanFindings(tool string, scanFindings []finding.Finding
 			Request:           sf.Evidence.Request,
 			Response:          sf.Evidence.Response,
 			Evidence:          sf.Evidence.Extracted,
+			Confidence:        sf.Confidence,
 			Status:            StatusNew,
 		}
 
