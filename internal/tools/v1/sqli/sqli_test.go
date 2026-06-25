@@ -17,6 +17,18 @@ func TestLooksInjectable(t *testing.T) {
 	}
 }
 
+func TestLooksInjectableRejectsTrueDelta(t *testing.T) {
+	control := response{status: 200, body: "welcome user list item1 item2 item3"}
+	truthy := response{status: 200, body: "something completely different page here"}
+	falsy := response{status: 200, body: "no results"}
+
+	// The TRUE payload diverges from the control, so the parameter changes the
+	// page for any input and is not boolean SQLi.
+	if looksInjectable(control, truthy, falsy) {
+		t.Fatalf("expected not injectable when TRUE payload also has a delta")
+	}
+}
+
 func TestUnionPayload(t *testing.T) {
 	stringCtx := contexts[0]
 	if got := unionPayload("1", stringCtx, 3, 1, "'mark'"); got != "1' AND '1'='2' UNION SELECT NULL,'mark',NULL-- -" {

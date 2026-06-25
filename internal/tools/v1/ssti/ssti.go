@@ -29,6 +29,13 @@ var detectionProbes = []string{
 
 const expectedResult = "49"
 
+// secondProbe is a distinct expression used to confirm evaluation when the
+// literal "49" already appears in the response for another reason.
+const (
+	secondProbe  = "{{13*17}}"
+	secondResult = "221"
+)
+
 // fingerprintProbe distinguishes Python Jinja2 (7777777) from numeric engines
 // such as Twig (49) by multiplying a number by a string.
 const fingerprintProbe = "{{7*'7'}}"
@@ -103,9 +110,29 @@ func testParam(cfg *config.Config, client *http.Client, p recon.Param) (finding.
 		return finding.Finding{}, false
 	}
 
+	if !confirmEvaluation(cfg, client, p) {
+		return finding.Finding{}, false
+	}
+
 	engine := fingerprint(cfg, client, p)
 
 	return buildFinding(cfg, client, p, engine, hitProbe, detected), true
+}
+
+// confirmEvaluation rules out a coincidental "49" in the body with a second,
+// independent signal. A distinct expression ({{13*17}} -> 221) that also
+// evaluates is the strongest proof. Otherwise a benign control value that
+// contains no digits must not yield "49": if it does, the page shows "49" for
+// any input and the original hit is not a real evaluation.
+func confirmEvaluation(cfg *config.Config, client *http.Client, p recon.Param) bool {
+	if resp := request(cfg, client, p, secondProbe); resp != nil &&
+		strings.Contains(resp.body, secondResult) && !strings.Contains(resp.body, secondProbe) {
+		return true
+	}
+
+	control := request(cfg, client, p, "frx7control")
+
+	return control != nil && !strings.Contains(control.body, expectedResult)
 }
 
 func fingerprint(cfg *config.Config, client *http.Client, p recon.Param) string {
@@ -133,11 +160,13 @@ func buildFinding(cfg *config.Config, client *http.Client, p recon.Param, engine
 
 	severity := finding.High
 	cvss := 8.1
+	confidence := 0.85
 	description := "A template expression was evaluated server-side (" + probe + " returned " + expectedResult + "), confirming server-side template injection."
 
 	if output, payload := attemptRCE(cfg, client, p, engine); output != "" {
 		severity = finding.Critical
 		cvss = 9.8
+		confidence = 1.0
 		description = "A template expression was evaluated server-side and an engine-specific payload executed a system command, confirming remote code execution."
 		extracted += "\nRCE payload: " + payload + "\ncommand output: " + output
 	}
@@ -159,6 +188,7 @@ func buildFinding(cfg *config.Config, client *http.Client, p recon.Param, engine
 			"Never render user input as a template; pass it as data to a sandboxed context.",
 			"Treat the host as compromised if RCE was confirmed and rotate exposed secrets.",
 		},
+		Confidence: confidence,
 	}
 }
 

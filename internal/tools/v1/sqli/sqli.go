@@ -12,20 +12,37 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/sayseven7/frameseven/internal/config"
 	"github.com/sayseven7/frameseven/internal/finding"
 	"github.com/sayseven7/frameseven/internal/tools/v1/recon"
+	"github.com/sayseven7/frameseven/internal/verify"
 )
 
 const marker = "frx7marker"
 
 // response is the outcome of one injected request.
 type response struct {
-	status int
-	body   string
-	dump   string
+	status  int
+	body    string
+	dump    string
+	elapsed time.Duration
+}
+
+// timeDelay is the sleep, in seconds, requested by the time-based payloads. A
+// confirmed time-based injection must add roughly this delay to the response.
+const timeDelay = 5
+
+// timePayloads delay the query by timeDelay seconds across the supported DBMS
+// dialects when injected into a vulnerable parameter.
+var timePayloads = []string{
+	"'; WAITFOR DELAY '0:0:5'-- ",
+	"' AND SLEEP(5)-- ",
+	"'; SELECT pg_sleep(5)-- ",
+	" AND SLEEP(5)-- ",
 }
 
 // injContext describes how a payload breaks out of a parameter: a string
@@ -180,7 +197,87 @@ func testParam(cfg *config.Config, client *http.Client, p recon.Param) []finding
 		return confirmed(cfg, client, p, orig, c, *truthy)
 	}
 
+	if tf := testTimeBased(cfg, client, p, orig); tf != nil {
+		return tf
+	}
+
 	return testCustomPayloads(cfg, client, p, orig, *base)
+}
+
+// testTimeBased confirms a blind time-based injection: a sleep payload must add
+// at least timeDelay-1 seconds over the baseline median and survive a replay, so
+// a single slow response is never mistaken for an injection.
+func testTimeBased(cfg *config.Config, client *http.Client, p recon.Param, orig string) []finding.Finding {
+	baselineMedian := medianLatency(sampleLatencies(cfg, client, p, orig, 3))
+	threshold := baselineMedian + (timeDelay-1)*time.Second
+
+	for _, payload := range timePayloads {
+		first := measureLatency(cfg, client, p, orig+payload)
+		if first < threshold || first < baselineMedian*3 {
+			continue
+		}
+
+		second := measureLatency(cfg, client, p, orig+payload)
+		if second < threshold {
+			continue
+		}
+
+		req := request(cfg, client, p, orig+payload)
+		if req == nil {
+			continue
+		}
+
+		return []finding.Finding{{
+			Title:       "SQL injection (time-based blind) in parameter '" + p.Name + "'",
+			Module:      "sqli",
+			Severity:    finding.Critical,
+			OWASP:       "A03:2025 - Injection",
+			CWE:         "CWE-89",
+			CVSS:        9.8,
+			Description: "A time-delay payload reliably delayed the response by roughly the requested sleep duration across two attempts, confirming blind SQL injection.",
+			Evidence: finding.Evidence{
+				Request:   req.dump,
+				Response:  trim(req.body, 400),
+				Extracted: "payload: " + orig + payload + "\nbaseline median: " + baselineMedian.Round(time.Millisecond).String() + "\ndelayed: " + first.Round(time.Millisecond).String(),
+			},
+			NextSteps: []string{
+				"Use parameterized queries / prepared statements for this parameter.",
+				"Validate and allowlist input types before they reach the database.",
+			},
+			Confidence: 0.75,
+		}}
+	}
+
+	return nil
+}
+
+func sampleLatencies(cfg *config.Config, client *http.Client, p recon.Param, value string, n int) []time.Duration {
+	var out []time.Duration
+	for i := 0; i < n; i++ {
+		out = append(out, measureLatency(cfg, client, p, value))
+	}
+
+	return out
+}
+
+func measureLatency(cfg *config.Config, client *http.Client, p recon.Param, value string) time.Duration {
+	resp := request(cfg, client, p, value)
+	if resp == nil {
+		return 0
+	}
+
+	return resp.elapsed
+}
+
+func medianLatency(samples []time.Duration) time.Duration {
+	if len(samples) == 0 {
+		return 0
+	}
+
+	sorted := append([]time.Duration{}, samples...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+
+	return sorted[len(sorted)/2]
 }
 
 func testCustomPayloads(cfg *config.Config, client *http.Client, p recon.Param, orig string, base response) []finding.Finding {
@@ -226,7 +323,9 @@ func customSQLiReason(base, resp response) string {
 		return "server error"
 	}
 
-	if sqlErrorSignature.MatchString(resp.body) {
+	// Require the SQL error to be absent from the control response: apps that
+	// always render SQL errors in the body (debug builds) are not a real signal.
+	if sqlErrorSignature.MatchString(resp.body) && !sqlErrorSignature.MatchString(base.body) {
 		return "SQL error signature"
 	}
 
@@ -255,6 +354,7 @@ func confirmed(cfg *config.Config, client *http.Client, p recon.Param, orig stri
 			"Use parameterized queries / prepared statements for this parameter.",
 			"Validate and allowlist input types before they reach the database.",
 		},
+		Confidence: 0.85,
 	}}
 
 	if extra := extract(cfg, client, p, orig, c); extra != nil {
@@ -265,13 +365,14 @@ func confirmed(cfg *config.Config, client *http.Client, p recon.Param, orig stri
 }
 
 // looksInjectable reports whether the true/false responses differ in the way a
-// boolean-based injection produces: the true page mirrors the baseline while the
-// false page diverges.
-func looksInjectable(base, truthy, falsy response) bool {
-	trueMatchesBase := truthy.status == base.status && similarity(base.body, truthy.body) > 0.95
-	falseDiffers := falsy.status != truthy.status || similarity(truthy.body, falsy.body) < 0.95
+// boolean-based injection produces. Using a strict differential: the TRUE
+// payload must match the control (no delta) while the FALSE payload must differ
+// (has delta). A parameter that changes the page for any input fails this test.
+func looksInjectable(control, truthy, falsy response) bool {
+	diffTrue := verify.CompareResponses(control.status, []byte(control.body), truthy.status, []byte(truthy.body))
+	diffFalse := verify.CompareResponses(control.status, []byte(control.body), falsy.status, []byte(falsy.body))
 
-	return trueMatchesBase && falseDiffers
+	return !diffTrue.HasDelta && diffFalse.HasDelta
 }
 
 // similarity is a cheap body-length ratio in [0,1]; 1 means identical length.
@@ -332,6 +433,7 @@ func extract(cfg *config.Config, client *http.Client, p recon.Param, orig string
 			"Treat the database as compromised: rotate credentials and review access logs.",
 			"Fix the injection with prepared statements and apply least-privilege DB accounts.",
 		},
+		Confidence: 1.0,
 	}}
 
 	if creds := dumpCredentials(cfg, client, p, orig, c, cols, pos, *profile, tables); creds != nil {
@@ -403,6 +505,7 @@ func dumpSchema(cfg *config.Config, client *http.Client, p recon.Param, orig str
 			"Fix the injection with prepared statements and least-privilege DB accounts.",
 			"Review which tables hold sensitive data and tighten access.",
 		},
+		Confidence: 1.0,
 	}
 }
 
@@ -444,6 +547,7 @@ func dumpCards(cfg *config.Config, client *http.Client, p recon.Param, orig stri
 			"Treat this as a payment-data breach and follow PCI-DSS incident response.",
 			"Never store CVV; tokenize card numbers and fix the injection.",
 		},
+		Confidence: 1.0,
 	}
 }
 
@@ -474,6 +578,7 @@ func readFileSQLi(cfg *config.Config, client *http.Client, p recon.Param, orig s
 			"Remove FILE privilege from the application database account.",
 			"Fix the injection with prepared statements.",
 		},
+		Confidence: 1.0,
 	}
 }
 
@@ -513,6 +618,7 @@ func xpCmdshell(cfg *config.Config, client *http.Client, p recon.Param, orig str
 			"Disable xp_cmdshell and run SQL Server under a low-privilege account.",
 			"Fix the injection with prepared statements.",
 		},
+		Confidence: 1.0,
 	}
 }
 
@@ -629,6 +735,7 @@ func dumpCredentials(cfg *config.Config, client *http.Client, p recon.Param, ori
 			"Rotate every exposed credential immediately.",
 			"Confirm passwords are stored with a strong, salted hash (argon2/bcrypt).",
 		},
+		Confidence: 1.0,
 	}
 }
 
@@ -713,6 +820,8 @@ func request(cfg *config.Config, client *http.Client, p recon.Param, value strin
 
 	dump, _ := httputil.DumpRequestOut(req, false)
 
+	started := time.Now()
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil
@@ -720,8 +829,9 @@ func request(cfg *config.Config, client *http.Client, p recon.Param, value strin
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	elapsed := time.Since(started)
 
-	return &response{status: resp.StatusCode, body: string(body), dump: string(dump)}
+	return &response{status: resp.StatusCode, body: string(body), dump: string(dump), elapsed: elapsed}
 }
 
 func between(s, start, end string) string {

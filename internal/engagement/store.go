@@ -185,6 +185,9 @@ type Patch struct {
 	RelatedSkill  string
 	References    []string
 	Tags          []string
+
+	// Confidence updates the 0..1 verification score when greater than zero.
+	Confidence float64
 }
 
 // Update applies a patch to the finding with the given id.
@@ -230,6 +233,10 @@ func (e *Engagement) Update(id string, patch Patch) error {
 
 	if len(patch.Tags) > 0 {
 		item.Tags = patch.Tags
+	}
+
+	if patch.Confidence > 0 {
+		item.Confidence = patch.Confidence
 	}
 
 	item.UpdatedAt = time.Now().UTC()

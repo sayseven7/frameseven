@@ -54,7 +54,7 @@ func RegisterTools(server *mcpsdk.Server) {
 	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "frameseven_v1_finding_add",
 		Title:       "Add Manual Finding",
-		Description: "Inject a manual finding into an engagement store, including extracted_data (dumps, cracked credentials, exfiltrated files) which is always included in the report.",
+		Description: "Inject a manual finding into an engagement store, including extracted_data (dumps, cracked credentials, exfiltrated files) which is always included in the report. Manual findings without evidence (no poc, request, or extracted_data) default to needs_review status and are excluded from the main report body.",
 		Annotations: &mcpsdk.ToolAnnotations{
 			DestructiveHint: &destructiveHint,
 		},
@@ -77,6 +77,15 @@ func RegisterTools(server *mcpsdk.Server) {
 			DestructiveHint: &destructiveHint,
 		},
 	}, V1Triage)
+
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "frameseven_v1_finding_verify",
+		Title:       "Re-Verify Finding",
+		Description: "Replay the stored PoC of a finding against the target and update its status and confidence based on whether the original behavior still reproduces. Use this to re-confirm findings after time has passed or to validate manual findings.",
+		Annotations: &mcpsdk.ToolAnnotations{
+			DestructiveHint: &destructiveHint,
+		},
+	}, V1FindingVerify)
 
 	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "frameseven_v1_finding_list",

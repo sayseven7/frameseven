@@ -94,6 +94,7 @@ func testEndpoint(cfg *config.Config, client *http.Client, endpoint string) []fi
 				"Disable external entity and DTD processing in the XML parser.",
 				"Treat any reachable local file as exposed and review for secrets.",
 			},
+			Confidence: 1.0,
 		})
 	}
 
@@ -115,6 +116,7 @@ func testEndpoint(cfg *config.Config, client *http.Client, endpoint string) []fi
 				"Disable external entity resolution and block outbound requests from the parser.",
 				"Require IMDSv2 and restrict access to the metadata endpoint.",
 			},
+			Confidence: 1.0,
 		})
 	}
 

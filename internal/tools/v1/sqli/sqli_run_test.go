@@ -74,6 +74,29 @@ func TestRunNoInjectionOnStableEndpoint(t *testing.T) {
 	}
 }
 
+func TestRunRejectsAlwaysSQLError(t *testing.T) {
+	// This server renders a SQL error in the body for every request, including
+	// the baseline: a debug build that always shows errors must not be flagged.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "Warning: you have an error in your SQL syntax; debug mode")
+	}))
+	defer srv.Close()
+
+	cfg := config.New(srv.URL)
+	cfg.Timeout = 5 * time.Second
+	cfg.CustomPayloads = []string{"' custom-sqli"}
+
+	surface := recon.Surface{
+		Params: []recon.Param{
+			{Name: "id", Endpoint: srv.URL + "/item?id=2", Method: http.MethodGet},
+		},
+	}
+
+	if findings := Run(&cfg, srv.Client(), &surface); len(findings) != 0 {
+		t.Errorf("expected no findings when SQL errors are always shown, got %+v", findings)
+	}
+}
+
 func TestRunChecksCustomPayloads(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")

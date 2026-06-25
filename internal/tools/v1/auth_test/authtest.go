@@ -173,6 +173,7 @@ func defaultCredFinding(endpoint string, cred credential, resp *response) findin
 			"Remove default accounts and force a password change on first use.",
 			"Enforce a strong password policy and multi-factor authentication.",
 		},
+		Confidence: 1.0,
 	}
 }
 
@@ -215,6 +216,9 @@ func lockoutFinding(cfg *config.Config, client *http.Client, endpoint string) (f
 			"Apply rate limiting and progressive lockout after failed attempts.",
 			"Add CAPTCHA and multi-factor authentication on the login flow.",
 		},
+		// Absence of a 429/403/lockout over ten attempts is an indicator, not
+		// hard proof: silent rate limiting or throttling may still be in place.
+		Confidence: 0.6,
 	}, true
 }
 
@@ -252,6 +256,7 @@ func jwtFindings(body string, seen map[string]bool) []finding.Finding {
 				"Rotate the signing key to a long, random secret stored securely.",
 				"Reject the 'none' algorithm and pin the expected algorithm server-side.",
 			},
+			Confidence: 1.0,
 		})
 	}
 

@@ -244,6 +244,13 @@ func IsStaticAssetResponse(contentType string, urlPath string) bool {
 	return false
 }
 
+// RandomToken returns a random lowercase-alphanumeric token of length n. Rules
+// use it to build unique markers that prove a payload, and not pre-existing
+// content, produced a signal.
+func RandomToken(n int) string {
+	return randomToken(n)
+}
+
 // --- helpers ---
 
 func bodyHash(body []byte) string {

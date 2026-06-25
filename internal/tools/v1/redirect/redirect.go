@@ -106,6 +106,7 @@ func testParam(cfg *config.Config, client *http.Client, p recon.Param) (finding.
 				"Redirect only to an allowlist of known-safe paths or hosts.",
 				"Reject absolute URLs, protocol-relative values, and executable URL schemes in redirect parameters.",
 			},
+			Confidence: 0.9,
 		}, true
 	}
 
@@ -113,21 +114,43 @@ func testParam(cfg *config.Config, client *http.Client, p recon.Param) (finding.
 }
 
 // confirmRedirect returns the external or executable destination when the
-// response redirects to one, or an empty string when it does not.
+// response redirects to one, or an empty string when it does not. The Location
+// header is parsed and the parsed host must be the injected external host: a
+// relative redirect (empty host) is not exploitable and is rejected.
 func confirmRedirect(resp *response) string {
 	if resp.location != "" {
-		if strings.Contains(resp.location, evilHost) || hasExecutableScheme(resp.location) {
+		if hasExecutableScheme(resp.location) {
+			return resp.location
+		}
+
+		if pointsToEvilHost(resp.location) {
 			return resp.location
 		}
 	}
 
 	if m := metaRefreshRe.FindStringSubmatch(resp.body); m != nil {
-		if strings.Contains(m[1], evilHost) {
-			return strings.TrimSpace(m[1])
+		destination := strings.TrimSpace(m[1])
+		if pointsToEvilHost(destination) {
+			return destination
 		}
 	}
 
 	return ""
+}
+
+// pointsToEvilHost reports whether a redirect destination parses to an absolute
+// URL whose host is the injected external host.
+func pointsToEvilHost(destination string) bool {
+	u, err := url.Parse(destination)
+	if err != nil {
+		return false
+	}
+
+	if u.Host == "" {
+		return false
+	}
+
+	return strings.Contains(strings.ToLower(u.Host), evilHost)
 }
 
 func hasExecutableScheme(raw string) bool {

@@ -62,6 +62,29 @@ func TestRunNoFalsePositiveWhenEncoded(t *testing.T) {
 	}
 }
 
+func TestRunRejectsTextareaContext(t *testing.T) {
+	// The payload is reflected verbatim but inside a textarea, where markup is
+	// treated as text and does not execute.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("q")
+		fmt.Fprintf(w, "<html><body><textarea>%s</textarea></body></html>", q)
+	}))
+	defer srv.Close()
+
+	cfg := config.New(srv.URL)
+	cfg.Timeout = 5 * time.Second
+
+	surface := recon.Surface{
+		Params: []recon.Param{
+			{Name: "q", Endpoint: srv.URL + "/search?q=test", Method: http.MethodGet},
+		},
+	}
+
+	if findings := Run(&cfg, srv.Client(), &surface); len(findings) != 0 {
+		t.Errorf("expected no findings for reflection inside a textarea, got %+v", findings)
+	}
+}
+
 func TestRunDetectsStored(t *testing.T) {
 	var stored string
 

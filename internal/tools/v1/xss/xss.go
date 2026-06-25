@@ -87,6 +87,12 @@ func testReflected(cfg *config.Config, client *http.Client, p recon.Param) []fin
 			continue
 		}
 
+		// Reject reflections that land in a non-executable context: inside a
+		// textarea, title, or script string literal the markup does not run.
+		if xssIsEscapedContext(resp.body, payload) {
+			continue
+		}
+
 		findings = append(findings, finding.Finding{
 			Title:       "Reflected XSS in parameter '" + p.Name + "'",
 			Module:      "xss",
@@ -104,12 +110,41 @@ func testReflected(cfg *config.Config, client *http.Client, p recon.Param) []fin
 				"Context-encode all output and validate input server-side.",
 				"Apply a strict Content-Security-Policy to limit script execution.",
 			},
+			Confidence: 0.85,
 		})
 
 		return findings
 	}
 
 	return findings
+}
+
+// xssIsEscapedContext returns true when the payload appears in a non-executable
+// context: inside a textarea, title, or an open script element, where the
+// reflected markup is treated as text rather than parsed as HTML.
+func xssIsEscapedContext(body, payload string) bool {
+	idx := strings.Index(body, payload)
+	if idx < 0 {
+		return false
+	}
+
+	start := idx - 200
+	if start < 0 {
+		start = 0
+	}
+
+	ctx := strings.ToLower(body[start:idx])
+
+	for _, tag := range []string{"<textarea", "<title", "<script"} {
+		lastOpen := strings.LastIndex(ctx, tag)
+		lastClose := strings.LastIndex(ctx, "</"+tag[1:])
+
+		if lastOpen > lastClose {
+			return true
+		}
+	}
+
+	return false
 }
 
 func testStored(cfg *config.Config, client *http.Client, p recon.Param) []finding.Finding {
@@ -142,6 +177,7 @@ func testStored(cfg *config.Config, client *http.Client, p recon.Param) []findin
 			"Context-encode stored content on output and validate input on write.",
 			"Apply a strict Content-Security-Policy to limit script execution.",
 		},
+		Confidence: 0.9,
 	}}
 }
 

@@ -112,6 +112,18 @@ func V1FindingAdd(ctx context.Context, req *mcpsdk.CallToolRequest, input findin
 		Tags:              input.Tags,
 	}
 
+	// A manual finding with no proof (no poc, evidence, or extracted data) and no
+	// explicit status defaults to needs_review so it stays out of the main report
+	// body until an operator verifies it.
+	hasEvidence := strings.TrimSpace(input.Evidence) != "" ||
+		strings.TrimSpace(input.PoC) != "" ||
+		strings.TrimSpace(input.ExtractedData) != ""
+
+	if !hasEvidence && strings.TrimSpace(input.Status) == "" {
+		item.Status = engagement.StatusNeedsReview
+		item.Confidence = engagement.DefaultConfidenceNeedsReview
+	}
+
 	id, err := eng.Add(item)
 	if err != nil {
 		return nil, findingAddOutput{}, err

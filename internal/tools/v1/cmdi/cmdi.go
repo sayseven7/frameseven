@@ -9,6 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,8 +18,9 @@ import (
 	"github.com/sayseven7/frameseven/internal/tools/v1/recon"
 )
 
-// delayThreshold is the minimum response time that confirms a blind time-based
-// injection. A real hit must also exceed three times the baseline.
+// delayThreshold is the minimum extra delay over the baseline median that
+// confirms a blind time-based injection. A real hit must also exceed three
+// times the baseline and reproduce on a replay.
 const delayThreshold = 4500 * time.Millisecond
 
 var paramHint = regexp.MustCompile(`(?i)^(cmd|exec|command|run|ping|host|ip|query|search|input|file|path|name|id|user|pass|url|target)$`)
@@ -101,28 +103,64 @@ func testParam(cfg *config.Config, client *http.Client, p recon.Param) (finding.
 		return finding.Finding{}, false
 	}
 
+	baselineMedian := medianLatency(sampleLatencies(cfg, client, p, orig, 3))
+	threshold := baselineMedian + delayThreshold
+
 	for _, payload := range timePayloads {
-		resp := request(cfg, client, p, orig+payload)
-		if resp == nil {
+		first := request(cfg, client, p, orig+payload)
+		if first == nil || first.elapsed < threshold || first.elapsed < 3*baselineMedian {
 			continue
 		}
 
-		if resp.elapsed < delayThreshold || resp.elapsed < 3*baseline.elapsed {
+		// Replay the payload: a single slow response is not enough, the delay
+		// must reproduce before a blind time-based injection is confirmed.
+		second := request(cfg, client, p, orig+payload)
+		if second == nil || second.elapsed < threshold {
 			continue
 		}
 
-		return buildFinding(cfg, client, p, orig, payload, resp), true
+		return buildFinding(cfg, client, p, orig, payload, first), true
 	}
 
 	return finding.Finding{}, false
 }
 
+func sampleLatencies(cfg *config.Config, client *http.Client, p recon.Param, value string, n int) []time.Duration {
+	var out []time.Duration
+	for i := 0; i < n; i++ {
+		resp := request(cfg, client, p, value)
+		if resp == nil {
+			continue
+		}
+
+		out = append(out, resp.elapsed)
+	}
+
+	return out
+}
+
+func medianLatency(samples []time.Duration) time.Duration {
+	if len(samples) == 0 {
+		return 0
+	}
+
+	sorted := append([]time.Duration{}, samples...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+
+	return sorted[len(sorted)/2]
+}
+
 func buildFinding(cfg *config.Config, client *http.Client, p recon.Param, orig, timePayload string, detected *response) finding.Finding {
 	extracted := "time-based payload: " + timePayload + "\ndelay: " + detected.elapsed.Round(time.Millisecond).String()
+
+	// Blind time-based confirmation alone is strong but not maximal; capturing
+	// real command output proves execution beyond doubt.
+	confidence := 0.75
 
 	output, used := extractOutput(cfg, client, p, orig)
 	if output != "" {
 		extracted += "\noutput payload: " + used + "\ncommand output:\n" + output
+		confidence = 1.0
 	}
 
 	return finding.Finding{
@@ -142,6 +180,7 @@ func buildFinding(cfg *config.Config, client *http.Client, p recon.Param, orig, 
 			"Treat the host as compromised and review for further access.",
 			"Never pass user input to a shell; use parameterized APIs and strict allowlists.",
 		},
+		Confidence: confidence,
 	}
 }
 
