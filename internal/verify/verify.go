@@ -5,14 +5,13 @@
 package verify
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 )
 
 // Baseline captures what a host returns for a known-bogus path. It is the
@@ -48,7 +47,7 @@ func CalibrateBaseline(client *http.Client, base *url.URL) (Baseline, bool) {
 		}
 
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		samples = append(samples, Baseline{
 			Status:      resp.StatusCode,
@@ -315,10 +314,14 @@ func abs(x int) int {
 
 func randomToken(n int) string {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand should never fail; fall back to a fixed token so the
+		// bogus path stays non-existent rather than panicking.
+		return strings.Repeat("z", n)
+	}
 	for i := range b {
-		b[i] = chars[r.Intn(len(chars))]
+		b[i] = chars[int(b[i])%len(chars)]
 	}
 
 	return string(b)
