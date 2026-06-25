@@ -16,8 +16,9 @@ The current framework and CLI contract is v1.
 
 ## Distribution Status
 
-Installable releases have not been published yet. Until the first release,
-build frameseven from source by following [Installation v1](v1/installation.md).
+Installable release artifacts, including pre-releases, are published through
+[GitHub Releases](https://github.com/sayseven7/frameseven/releases). Use a
+packaged artifact or Docker image when you do not need a local source build.
 
 The intended public product is the `frameseven` command. The Go implementation
 packages currently live under `internal/` and are not an importable library

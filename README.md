@@ -21,7 +21,7 @@ ships an MCP server so AI agents can drive the same Framework v1 tooling.
 
 ---
 
-## Features
+## Highlights
 
 - **Attack-surface mapping** — recon, crawling, port and banner discovery, and
   subdomain enumeration before any active probing.
@@ -38,7 +38,21 @@ ships an MCP server so AI agents can drive the same Framework v1 tooling.
 - **Standard-library focused** — a small, explicit Go codebase that is easy to
   read and extend.
 
-## Requirements
+## Get Frameseven
+
+frameseven is distributed through three clear paths:
+
+- **GitHub Releases and pre-releases** are the recommended option for most
+  users who want a packaged binary without building from source.
+- **Docker** is the easiest way to run the scanner with a self-contained
+  runtime and the external tooling bundled in the image.
+- **Source builds** are best for development, local changes, or when you need
+  to work directly from the repository.
+
+See [Installation v1](docs/v1/installation.md) for the full distribution
+matrix and platform-specific instructions.
+
+## Source Build Requirements
 
 - Go 1.26.4 or later in the Go 1.26 release line
 - Python 3 with `fpdf2` for PDF report generation
@@ -52,15 +66,31 @@ ships an MCP server so AI agents can drive the same Framework v1 tooling.
 git clone https://github.com/sayseven7/frameseven.git
 cd frameseven
 
-# Optional: enable PDF report generation
+# Optional: enable PDF report generation for local builds
 python3 -m venv .venv
 .venv/bin/python -m pip install "fpdf2>=2.8"
 
 # Verify the build
 go test ./...
 
-# Run a scan against an authorized target
+# Run a scan against an authorized target from source
 go run cmd/cli/v1/main.go -url https://target.example
+```
+
+If you prefer a packaged release, download a stable release or pre-release
+artifact from GitHub Releases and run the installed `frameseven` command.
+
+To run the published Docker image:
+
+```bash
+docker pull ghcr.io/sayseven7/frameseven:<version>
+
+mkdir -p reports
+docker run --rm \
+  -v "$PWD/reports:/workspace/reports" \
+  ghcr.io/sayseven7/frameseven:<version> \
+  -url https://target.example \
+  -out /workspace/reports
 ```
 
 Run without `-url` in a terminal to open the interactive setup wizard:
@@ -69,7 +99,7 @@ Run without `-url` in a terminal to open the interactive setup wizard:
 go run cmd/cli/v1/main.go
 ```
 
-Build an installable binary:
+Build an installable binary from source:
 
 ```bash
 go build -o bin/frameseven/cli/v1 cmd/cli/v1/main.go
@@ -153,6 +183,7 @@ client setup.
 - [CLI v1](docs/v1/cli.md)
 - [Report format v1](docs/v1/report-format.md)
 - [MCP server](docs/mcp.md)
+- [GitHub Releases](https://github.com/sayseven7/frameseven/releases)
 - [Go reference](https://pkg.go.dev/github.com/sayseven7/frameseven)
 
 ## Contributing
