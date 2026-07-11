@@ -31,7 +31,7 @@ type listToolsOutput struct {
 }
 
 type normalizeToolsInput struct {
-	Tools []string `json:"tools" jsonschema:"tool names to validate; empty means the default tool set"`
+	Tools []string `json:"tools,omitempty" jsonschema:"tool names to validate; empty means the default tool set"`
 }
 
 type normalizeToolsOutput struct {
@@ -52,14 +52,14 @@ type scanToolInput struct {
 	UserAgent          string   `json:"user_agent" jsonschema:"User-Agent header; uses the project default when empty"`
 	NVDAPIKey          string   `json:"nvd_api_key" jsonschema:"optional NVD API key for CVE lookups"`
 	ActiveScanAccepted bool     `json:"active_scan_accepted" jsonschema:"must be true to confirm this tool may send active security probes to the target"`
-	ExtraTools         []string `json:"extra_tools" jsonschema:"optional additional Framework v1 tools to run with this tool"`
-	CustomPayloads     []string `json:"custom_payloads" jsonschema:"optional caller-supplied probes used by tools that support dynamic payloads"`
+	ExtraTools         []string `json:"extra_tools,omitempty" jsonschema:"optional additional Framework v1 tools to run with this tool"`
+	CustomPayloads     []string `json:"custom_payloads,omitempty" jsonschema:"optional caller-supplied probes used by tools that support dynamic payloads"`
 
-	AuthCookies   []string          `json:"auth_cookies" jsonschema:"optional session cookies as name=value pairs; sent in the Cookie header of every request so the scan runs authenticated"`
-	AuthHeaders   map[string]string `json:"auth_headers" jsonschema:"optional auth headers such as Authorization; sent on every request so the scan runs authenticated"`
-	SeedEndpoints []string          `json:"seed_endpoints" jsonschema:"optional same-host API URLs known to the caller; merged into the scan surface so access and IDOR checks reach SPA/API routes a static crawl would miss"`
+	AuthCookies   []string          `json:"auth_cookies,omitempty" jsonschema:"optional session cookies as name=value pairs; sent in the Cookie header of every request so the scan runs authenticated"`
+	AuthHeaders   map[string]string `json:"auth_headers,omitempty" jsonschema:"optional auth headers such as Authorization; sent on every request so the scan runs authenticated"`
+	SeedEndpoints []string          `json:"seed_endpoints,omitempty" jsonschema:"optional same-host API URLs known to the caller; merged into the scan surface so access and IDOR checks reach SPA/API routes a static crawl would miss"`
 
-	EngagementID string `json:"engagement_id" jsonschema:"optional engagement store id; when set, the findings are appended to that store for later triage and consolidated reporting"`
+	EngagementID string `json:"engagement_id,omitempty" jsonschema:"optional engagement store id; when set, the findings are appended to that store for later triage and consolidated reporting"`
 }
 
 type scanToolOutput struct {
@@ -96,7 +96,7 @@ type scanErrorSummary struct {
 
 type reportToolInput struct {
 	Target             string   `json:"target" jsonschema:"authorized HTTP or HTTPS target URL"`
-	Tools              []string `json:"tools" jsonschema:"scanner tools to run; empty runs the default scan profile"`
+	Tools              []string `json:"tools,omitempty" jsonschema:"scanner tools to run; empty runs the default scan profile"`
 	TimeoutSeconds     int      `json:"timeout_seconds" jsonschema:"per-request timeout in seconds; uses the project default when empty"`
 	ToolTimeoutSeconds int      `json:"tool_timeout_seconds" jsonschema:"maximum runtime for each scanner tool in seconds; uses the project default when empty"`
 	Concurrency        int      `json:"concurrency" jsonschema:"scanner tools to run in parallel after recon; uses the project default when empty"`
@@ -104,14 +104,14 @@ type reportToolInput struct {
 	UserAgent          string   `json:"user_agent" jsonschema:"User-Agent header; uses the project default when empty"`
 	NVDAPIKey          string   `json:"nvd_api_key" jsonschema:"optional NVD API key for CVE lookups"`
 	ActiveScanAccepted bool     `json:"active_scan_accepted" jsonschema:"must be true to confirm this tool may send active security probes to the target"`
-	CustomPayloads     []string `json:"custom_payloads" jsonschema:"optional caller-supplied probes used by tools that support dynamic payloads"`
+	CustomPayloads     []string `json:"custom_payloads,omitempty" jsonschema:"optional caller-supplied probes used by tools that support dynamic payloads"`
 	Format             string   `json:"format" jsonschema:"report format: text, markdown, html, pdf, both, or all; defaults to text"`
 
-	AuthCookies   []string          `json:"auth_cookies" jsonschema:"optional session cookies as name=value pairs; sent in the Cookie header of every request so the scan runs authenticated"`
-	AuthHeaders   map[string]string `json:"auth_headers" jsonschema:"optional auth headers such as Authorization; sent on every request so the scan runs authenticated"`
-	SeedEndpoints []string          `json:"seed_endpoints" jsonschema:"optional same-host API URLs known to the caller; merged into the scan surface so access and IDOR checks reach SPA/API routes a static crawl would miss"`
+	AuthCookies   []string          `json:"auth_cookies,omitempty" jsonschema:"optional session cookies as name=value pairs; sent in the Cookie header of every request so the scan runs authenticated"`
+	AuthHeaders   map[string]string `json:"auth_headers,omitempty" jsonschema:"optional auth headers such as Authorization; sent on every request so the scan runs authenticated"`
+	SeedEndpoints []string          `json:"seed_endpoints,omitempty" jsonschema:"optional same-host API URLs known to the caller; merged into the scan surface so access and IDOR checks reach SPA/API routes a static crawl would miss"`
 
-	EngagementID string `json:"engagement_id" jsonschema:"optional engagement store id; when set, the findings are appended to that store for later triage and consolidated reporting"`
+	EngagementID string `json:"engagement_id,omitempty" jsonschema:"optional engagement store id; when set, the findings are appended to that store for later triage and consolidated reporting"`
 }
 
 type reportToolOutput struct {

@@ -64,8 +64,8 @@ type findingAddInput struct {
 	Evidence      string   `json:"evidence" jsonschema:"supporting evidence text"`
 	ExtractedData string   `json:"extracted_data" jsonschema:"dumps, cracked credentials, or exfiltrated file contents; always included in the report"`
 	Status        string   `json:"status" jsonschema:"triage status: new, confirmed, false_positive, or needs_review; defaults to confirmed for manual findings"`
-	References    []string `json:"references" jsonschema:"optional reference URLs"`
-	Tags          []string `json:"tags" jsonschema:"optional tags used to map a remediation playbook"`
+	References    []string `json:"references,omitempty" jsonschema:"optional reference URLs"`
+	Tags          []string `json:"tags,omitempty" jsonschema:"optional tags used to map a remediation playbook"`
 	RelatedSkill  string   `json:"related_skill" jsonschema:"optional remediation playbook resource URI; derived from cwe/owasp/tags when empty"`
 }
 
@@ -149,8 +149,8 @@ type findingUpdateInput struct {
 	PoC           string   `json:"poc" jsonschema:"reproduction steps or payload to attach"`
 	Description   string   `json:"description" jsonschema:"replacement description"`
 	RelatedSkill  string   `json:"related_skill" jsonschema:"remediation playbook resource URI"`
-	References    []string `json:"references" jsonschema:"replacement reference URLs"`
-	Tags          []string `json:"tags" jsonschema:"replacement tags"`
+	References    []string `json:"references,omitempty" jsonschema:"replacement reference URLs"`
+	Tags          []string `json:"tags,omitempty" jsonschema:"replacement tags"`
 }
 
 type findingUpdateOutput struct {
@@ -224,7 +224,7 @@ type triageOverrideInput struct {
 type triageInput struct {
 	EngagementID string                `json:"engagement_id" jsonschema:"engagement store id"`
 	Auto         bool                  `json:"auto" jsonschema:"apply automatic false-positive heuristics such as SPA index.html detection"`
-	Overrides    []triageOverrideInput `json:"overrides" jsonschema:"manual triage decisions applied after the automatic pass"`
+	Overrides    []triageOverrideInput `json:"overrides,omitempty" jsonschema:"manual triage decisions applied after the automatic pass"`
 }
 
 type triageOutput struct {
