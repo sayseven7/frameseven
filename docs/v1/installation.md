@@ -39,7 +39,7 @@ The public operating system names are `linux`, `macos`, and `windows`.
 - Network access to the authorized scan target
 - Python 3 with `fpdf2` for PDF report generation
 
-Building from source additionally requires Git and Go 1.26.4 or later in the
+Building from source additionally requires Git and Go 1.26.5 or later in the
 Go 1.26 release line.
 
 Install the Python PDF dependency with your environment manager of choice, for

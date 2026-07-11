@@ -1,6 +1,6 @@
 module github.com/sayseven7/frameseven
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/go-rod/rod v0.116.2

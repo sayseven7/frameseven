@@ -54,7 +54,7 @@ matrix and platform-specific instructions.
 
 ## Source Build Requirements
 
-- Go 1.26.4 or later in the Go 1.26 release line
+- Go 1.26.5 or later in the Go 1.26 release line
 - Python 3 with `fpdf2` for PDF report generation
 - Git
 - Network access to the authorized target
