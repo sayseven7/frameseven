@@ -38,6 +38,14 @@ ships an MCP server so AI agents can drive the same Framework v1 tooling.
 - **Standard-library focused** — a small, explicit Go codebase that is easy to
   read and extend.
 
+## Video Demo
+
+Watch a walkthrough and demonstration of frameseven in action:
+
+[![Watch the frameseven demo on YouTube](https://img.youtube.com/vi/2oT6hUGPv60/maxresdefault.jpg)](https://youtu.be/2oT6hUGPv60)
+
+> Recommended: [frameseven demo on YouTube](https://youtu.be/2oT6hUGPv60)
+
 ## Get Frameseven
 
 frameseven is distributed through three clear paths:
