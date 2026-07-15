@@ -191,6 +191,7 @@ client setup.
 - [CLI v1](docs/v1/cli.md)
 - [Report format v1](docs/v1/report-format.md)
 - [MCP server](docs/mcp.md)
+- [Prompt suggestions](docs/prompt-suggestions/) — ready-to-use mission prompts to run in your own agents
 - [GitHub Releases](https://github.com/sayseven7/frameseven/releases)
 - [Go reference](https://pkg.go.dev/github.com/sayseven7/frameseven)
 

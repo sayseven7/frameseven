@@ -13,6 +13,7 @@ The current framework and CLI contract is v1.
 - [CLI Commands v1](v1/cli.md)
 - [MCP Server](mcp.md)
 - [CLI Output Format v1](v1/report-format.md)
+- [Prompt Suggestions](prompt-suggestions/README.md)
 
 ## Distribution Status
 
